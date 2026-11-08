@@ -77,6 +77,10 @@ public partial class SettingsVm : PageVm
             ExecutorStatus = ServiceStatus(ServiceProvisioner.Get("executor"), c.ExecutorEnabled);
             if (string.IsNullOrEmpty(ResponderAddress)) ResponderAddress = c.ResponderAddress;
             AutoApproveReadOnly = c.AutoApproveReadOnly;
+            _loadingAuto = true;
+            AutoAcceptTimeline = c.AutoAcceptTimeline;
+            AutoAcceptFindings = c.AutoAcceptFindings;
+            _loadingAuto = false;
             _loadingAi = true;
             // Show the effective model ("" in the database means that agent's default).
             AgentModel = AiNames.Resolve(c.AgentModel, "agent");
@@ -112,6 +116,22 @@ public partial class SettingsVm : PageVm
     }
 
     [RelayCommand] void SaveResponderAddress() => Conn.Reducers.SetResponderAddress(ResponderAddress.Trim());
+
+    // Demo friction: the parser's timeline entries and findings go straight onto the record.
+    [ObservableProperty] bool autoAcceptTimeline;
+    [ObservableProperty] bool autoAcceptFindings;
+    bool _loadingAuto;
+
+    partial void OnAutoAcceptTimelineChanged(bool value) => PushAutoAccept();
+    partial void OnAutoAcceptFindingsChanged(bool value) => PushAutoAccept();
+
+    void PushAutoAccept()
+    {
+        if (_loadingAuto || Session.Conn == null || !Session.IsCommander) return;
+        foreach (var c in Conn.Db.ConfigView.Iter())
+            if (c.AutoAcceptTimeline == AutoAcceptTimeline && c.AutoAcceptFindings == AutoAcceptFindings) return;
+        Conn.Reducers.SetAutoAccept(AutoAcceptTimeline, AutoAcceptFindings);
+    }
 
     partial void OnAutoApproveReadOnlyChanged(bool value)
     {

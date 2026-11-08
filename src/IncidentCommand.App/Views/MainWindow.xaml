@@ -3,70 +3,137 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:v="clr-namespace:IncidentCommand.App.Views"
-        Title="Incident Command" Width="1400" Height="900" WindowState="Maximized" FontSize="15"
-        Background="{DynamicResource ApplicationBackgroundBrush}"
-        Foreground="{DynamicResource TextFillColorPrimaryBrush}">
-  <DockPanel>
-    <!-- Banner: visible on every screen -->
-    <Border DockPanel.Dock="Top" Padding="16,12" Background="{StaticResource CardBrush}">
-      <Grid>
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="*" />
-          <ColumnDefinition Width="Auto" />
-        </Grid.ColumnDefinitions>
-        <Border Background="{Binding PhaseBrush}" CornerRadius="4" Padding="12,6" Margin="0,0,16,0" VerticalAlignment="Center">
-          <TextBlock Text="{Binding PhaseText}" FontSize="18" FontWeight="Bold" Foreground="White" />
-        </Border>
-        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-          <TextBlock Text="{Binding IncidentLine}" FontSize="20" FontWeight="SemiBold" />
-          <TextBlock Text="{Binding NextStep}" Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis" />
-        </StackPanel>
-        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-          <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
-            <TextBlock Text="{Binding UserLine}" Style="{StaticResource Muted}" HorizontalAlignment="Right" />
-            <TextBlock Text="{Binding AiLine}" Foreground="{Binding AiBrush}" FontWeight="SemiBold" HorizontalAlignment="Right" />
-          </StackPanel>
-          <ui:Button Content="Back to current incident" Margin="0,0,8,0" Command="{Binding BackToCurrentCommand}">
-            <ui:Button.Style>
-              <Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
-                <Setter Property="Visibility" Value="Collapsed" />
-                <Style.Triggers>
-                  <DataTrigger Binding="{Binding ViewingPast}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
-                </Style.Triggers>
-              </Style>
-            </ui:Button.Style>
-          </ui:Button>
-          <ui:Button Content="Lock" Command="{Binding LockNowCommand}" />
-        </StackPanel>
-      </Grid>
-    </Border>
+        Title="Incident Command" Width="1600" Height="950" WindowState="Maximized" FontSize="14"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}">
+  <Grid x:Name="Root">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="Auto" />                                  <!-- sidebar -->
+      <ColumnDefinition Width="*" MinWidth="520" />                      <!-- page + terminal -->
+      <ColumnDefinition x:Name="ChatSplitCol" Width="Auto" />            <!-- drag to resize the chat -->
+      <ColumnDefinition x:Name="ChatCol" Width="420" MaxWidth="900" />    <!-- AI chat, floor to ceiling -->
+    </Grid.ColumnDefinitions>
 
-    <!-- Errors from any reducer call show here, in words -->
-    <Border DockPanel.Dock="Top" Background="{StaticResource DangerBrush}" Padding="16,8">
-      <Border.Style>
-        <Style TargetType="Border">
-          <Style.Triggers>
-            <DataTrigger Binding="{Binding ErrorText}" Value="">
-              <Setter Property="Visibility" Value="Collapsed" />
-            </DataTrigger>
-          </Style.Triggers>
-        </Style>
-      </Border.Style>
+    <!-- ================= Sidebar ================= -->
+    <Border Grid.Column="0" Width="{Binding SidebarWidth}" Background="{StaticResource SurfaceBrush}"
+            BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,1,0">
       <DockPanel>
-        <ui:Button DockPanel.Dock="Right" Content="Dismiss" Command="{Binding DismissErrorCommand}" />
-        <TextBlock Text="{Binding ErrorText}" Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
+        <!-- Expand / collapse -->
+        <Button DockPanel.Dock="Top" Command="{Binding ToggleSidebarCommand}" Cursor="Hand" Margin="6,10,6,8"
+                ToolTip="Show or hide the labels" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Left" Padding="10,8">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="&#xE700;" FontFamily="{StaticResource IconFont}" FontSize="18" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="Incident Command" Margin="14,0,0,0" FontWeight="SemiBold" VerticalAlignment="Center"
+                       Visibility="{Binding SidebarExpanded, Converter={StaticResource BoolVis}}" />
+          </StackPanel>
+        </Button>
+
+        <!-- Who's logged in, at the bottom -->
+        <StackPanel DockPanel.Dock="Bottom" Margin="16,8,16,16" Visibility="{Binding SidebarExpanded, Converter={StaticResource BoolVis}}">
+          <TextBlock Text="{Binding UserLine}" Style="{StaticResource Muted}" FontSize="12" />
+        </StackPanel>
+
+        <ListBox ItemsSource="{Binding Pages}" SelectedIndex="{Binding SelectedPage}" Background="Transparent" BorderThickness="0"
+                 ItemContainerStyle="{StaticResource SidebarItem}" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Grid ToolTip="{Binding Name}">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="18" Width="20"
+                             Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding Name}" Margin="14,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource TextBrush}"
+                             Visibility="{Binding DataContext.SidebarExpanded, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolVis}}" />
+                </StackPanel>
+                <!-- Count of decisions waiting -->
+                <Border Background="{StaticResource DangerBrush}" CornerRadius="999" MinWidth="17" Height="17" Padding="4,0"
+                        HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12,-7,0,0"
+                        Visibility="{Binding HasBadge, Converter={StaticResource BoolVis}}">
+                  <TextBlock Text="{Binding Badge}" FontSize="10.5" FontWeight="Bold" Foreground="White"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
       </DockPanel>
     </Border>
 
-    <TabControl TabStripPlacement="Left" Margin="0,8,0,0" FontSize="16" SelectedIndex="{Binding SelectedTab}">
-      <TabItem Header="Overview"><v:OverviewView DataContext="{Binding Overview}" /></TabItem>
-      <TabItem Header="{Binding ActionsHeader}"><v:ActionsView DataContext="{Binding Actions}" /></TabItem>
-      <TabItem Header="Timeline and AI"><v:TimelineView DataContext="{Binding Timeline}" /></TabItem>
-      <TabItem Header="Terminal"><v:TerminalView DataContext="{Binding Terminal}" /></TabItem>
-      <TabItem Header="Previous incidents"><v:PreviousIncidentsView DataContext="{Binding PreviousIncidents}" /></TabItem>
-      <TabItem Header="Laptop posture"><v:PostureView DataContext="{Binding Posture}" /></TabItem>
-      <TabItem Header="Settings"><v:SettingsView DataContext="{Binding Settings}" /></TabItem>
-    </TabControl>
-  </DockPanel>
+    <!-- ================= Banner, page, terminal ================= -->
+    <Grid Grid.Column="1">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />                                <!-- banner -->
+        <RowDefinition Height="Auto" />                                <!-- error strip -->
+        <RowDefinition Height="*" MinHeight="200" />                   <!-- page -->
+        <RowDefinition x:Name="TermSplitRow" Height="Auto" />          <!-- drag to resize the terminal -->
+        <RowDefinition x:Name="TermRow" Height="260" MaxHeight="800" /> <!-- terminal -->
+      </Grid.RowDefinitions>
+
+      <!-- Banner: always visible -->
+      <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="20,12">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <Border Style="{StaticResource Chip}" Background="{Binding PhaseBrush}" Padding="12,5" Margin="0,0,14,0"
+                  Visibility="{Binding HasPhase, Converter={StaticResource BoolVis}}">
+            <TextBlock Text="{Binding PhaseText}" Style="{StaticResource ChipText}" FontSize="13" />
+          </Border>
+          <StackPanel Grid.Column="1" VerticalAlignment="Center">
+            <TextBlock Text="{Binding IncidentLine}" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+            <TextBlock Foreground="{Binding AiBrush}" FontSize="12" Margin="0,2,0,0" TextTrimming="CharacterEllipsis">
+              <Run Text="&#xE945;" FontFamily="{StaticResource IconFont}" /> <Run Text="Local AI   " /><Run Text="{Binding AiLine, Mode=OneWay}" />
+            </TextBlock>
+          </StackPanel>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+            <ui:Button Content="Back to current incident" Margin="0,0,8,0" Command="{Binding BackToCurrentCommand}"
+                       Visibility="{Binding ViewingPast, Converter={StaticResource BoolVis}}" />
+            <ui:Button Command="{Binding LockNowCommand}" ToolTip="Lock (also happens after 5 minutes idle)">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="&#xE72E;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" />
+                <TextBlock Text="Lock" Margin="8,0,0,0" VerticalAlignment="Center" />
+              </StackPanel>
+            </ui:Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- Errors from any database call, in words -->
+      <Border Grid.Row="1" Background="{StaticResource DangerBrush}" Padding="20,8">
+        <Border.Style>
+          <Style TargetType="Border">
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding ErrorText}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </Border.Style>
+        <DockPanel>
+          <ui:Button DockPanel.Dock="Right" Content="Dismiss" Command="{Binding DismissErrorCommand}" />
+          <TextBlock Text="{Binding ErrorText}" Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
+        </DockPanel>
+      </Border>
+
+      <!-- Pages: a TabControl with its tab strip hidden; the sidebar drives it. Pages keep their state. -->
+      <TabControl Grid.Row="2" SelectedIndex="{Binding SelectedPage}" Background="Transparent" BorderThickness="0" Padding="0">
+        <TabControl.ItemContainerStyle>
+          <Style TargetType="TabItem"><Setter Property="Visibility" Value="Collapsed" /></Style>
+        </TabControl.ItemContainerStyle>
+        <TabItem><v:OverviewView DataContext="{Binding Overview}" /></TabItem>
+        <TabItem><v:ActivityView DataContext="{Binding Activity}" /></TabItem>
+        <TabItem><v:PreviousIncidentsView DataContext="{Binding PreviousIncidents}" /></TabItem>
+        <TabItem><v:PostureView DataContext="{Binding Posture}" /></TabItem>
+        <TabItem><v:SettingsView DataContext="{Binding Settings}" /></TabItem>
+      </TabControl>
+
+      <!-- Drag the top edge of the terminal, like VS Code -->
+      <GridSplitter x:Name="TermSplitter" Grid.Row="3" Height="5" HorizontalAlignment="Stretch" ResizeDirection="Rows"
+                    ResizeBehavior="PreviousAndNext" Style="{StaticResource Splitter}" Cursor="SizeNS" />
+      <v:TerminalPanel x:Name="TerminalPanel" Grid.Row="4" DataContext="{Binding Terminal}" />
+    </Grid>
+
+    <!-- Drag the left edge of the chat -->
+    <GridSplitter x:Name="ChatSplitter" Grid.Column="2" Width="5" VerticalAlignment="Stretch" ResizeDirection="Columns"
+                  ResizeBehavior="PreviousAndNext" Style="{StaticResource Splitter}" Cursor="SizeWE" />
+    <v:ChatPanel x:Name="ChatPanel" Grid.Column="3" DataContext="{Binding Chat}" />
+  </Grid>
 </Window>

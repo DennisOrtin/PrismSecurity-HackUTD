@@ -47,9 +47,11 @@ public sealed class ModelClient
                 new JsonObject { ["role"] = "user", ["content"] = user },
             },
         };
-        if (tools != null && mode == "native") { body["tools"] = tools; body["tool_choice"] = "auto"; }
+        // Always attach COPIES: a JsonNode can only have one parent, and callers reuse their schemas
+        // (the reviewer's verdict schema is static). Reusing the original fails the second time.
+        if (tools != null && mode == "native") { body["tools"] = tools.DeepClone(); body["tool_choice"] = "auto"; }
         else if (tools != null) body["response_format"] = Format("tool_calls", CallsSchema(tools));
-        else if (responseSchema != null) body["response_format"] = Format("reply", responseSchema);
+        else if (responseSchema != null) body["response_format"] = Format("reply", (JsonObject)responseSchema.DeepClone());
 
         using var resp = await _http.PostAsync("chat/completions",
             new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"));

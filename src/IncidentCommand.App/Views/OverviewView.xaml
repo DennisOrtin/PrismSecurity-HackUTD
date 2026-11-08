@@ -2,139 +2,205 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
-  <ScrollViewer VerticalScrollBarVisibility="Auto">
-    <StackPanel Margin="24">
+  <Grid>
+    <!-- ===== No incident yet: one clear thing to do ===== -->
+    <Border Style="{StaticResource Card}" MaxWidth="520" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="28"
+            Visibility="{Binding HasIncident, Converter={StaticResource InvertBoolVis}}">
+      <StackPanel>
+        <TextBlock Text="&#xE7BA;" FontFamily="{StaticResource IconFont}" FontSize="34" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,12" />
+        <TextBlock Text="No open incident" Style="{StaticResource H1}" Margin="0,0,0,6" />
+        <TextBlock Text="Open one to start recording, analysing and responding. Only the incident commander can open an incident."
+                   Style="{StaticResource Muted}" Margin="0,0,0,18" />
+        <TextBlock Text="SHORT TITLE" Style="{StaticResource Label}" />
+        <TextBox Text="{Binding NewTitle, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12" />
+        <TextBlock Text="SEVERITY (4 = CRITICAL)" Style="{StaticResource Label}" />
+        <ComboBox ItemsSource="{Binding Severities}" SelectedItem="{Binding NewSeverity}" Width="120" HorizontalAlignment="Left" Margin="0,0,0,18" />
+        <ui:Button Content="Open incident" Appearance="Primary" Command="{Binding OpenIncidentCommand}" IsEnabled="{Binding IsCommander}" HorizontalAlignment="Stretch" />
+      </StackPanel>
+    </Border>
 
-      <!-- No incident yet: the one thing to do is open one -->
-      <Border>
-        <Border.Style>
-          <Style TargetType="Border" BasedOn="{StaticResource Card}">
-            <Style.Triggers>
-              <DataTrigger Binding="{Binding HasIncident}" Value="True">
-                <Setter Property="Visibility" Value="Collapsed" />
-              </DataTrigger>
-            </Style.Triggers>
-          </Style>
-        </Border.Style>
-        <StackPanel>
-          <TextBlock Text="Open an incident" Style="{StaticResource H2}" />
-          <TextBlock Style="{StaticResource Muted}" Text="Only the incident commander can open one." Margin="0,0,0,8" />
-          <TextBlock Text="Short title" />
-          <TextBox Text="{Binding NewTitle, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8" />
-          <TextBlock Text="Severity (4 = critical)" />
-          <ComboBox ItemsSource="{Binding Severities}" SelectedItem="{Binding NewSeverity}" Width="120" HorizontalAlignment="Left" Margin="0,4,0,12" />
-          <ui:Button Content="Open incident" Appearance="Primary" Command="{Binding OpenIncidentCommand}" IsEnabled="{Binding IsCommander}" />
-        </StackPanel>
-      </Border>
+    <!-- ===== An incident is open ===== -->
+    <DockPanel Visibility="{Binding HasIncident, Converter={StaticResource BoolVis}}">
 
-      <!-- What the parser agent has worked out -->
-      <Border Style="{StaticResource Card}" BorderBrush="{StaticResource WarningBrush}" BorderThickness="1">
-        <StackPanel>
-          <DockPanel>
-            <TextBlock DockPanel.Dock="Right" Text="{Binding AiUpdated}" Style="{StaticResource Muted}" VerticalAlignment="Center" />
-            <TextBlock Text="What we know so far (parser AI)" Style="{StaticResource H2}" />
-          </DockPanel>
-          <TextBlock Text="{Binding Classification}" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource WarningBrush}" Margin="0,0,0,6" />
-          <TextBlock Text="{Binding AiSummary}" TextWrapping="Wrap" />
-          <TextBlock Style="{StaticResource Muted}" Margin="0,8,0,0"
-                     Text="Written by AI from everything in this incident, including attacker-controlled logs. Check it against the evidence." />
-        </StackPanel>
-      </Border>
-
-      <!-- Scope: what data is affected and how -->
-      <TextBlock Text="What data is affected" Style="{StaticResource H1}" />
-      <DataGrid ItemsSource="{Binding Scope}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" Margin="0,0,0,12">
-        <DataGrid.Columns>
-          <DataGridTextColumn Header="Host" Binding="{Binding Host}" Width="140" />
-          <DataGridTextColumn Header="Data" Binding="{Binding DataClass}" Width="170" />
-          <DataGridTextColumn Header="Scope" Binding="{Binding Scope}" Width="120" />
-          <DataGridTemplateColumn Header="Status" Width="230">
-            <DataGridTemplateColumn.CellTemplate>
-              <DataTemplate>
-                <TextBlock Text="{Binding Status}" Foreground="{Binding StatusBrush}" FontWeight="Bold" />
-              </DataTemplate>
-            </DataGridTemplateColumn.CellTemplate>
-          </DataGridTemplateColumn>
-          <DataGridTextColumn Header="Evidence" Binding="{Binding Evidence}" Width="*" />
-          <DataGridTextColumn Header="Updated by" Binding="{Binding UpdatedBy}" Width="140" />
-        </DataGrid.Columns>
-      </DataGrid>
-
-      <!-- AI-proposed scope changes waiting for a human -->
-      <TextBlock Text="Suggested by the AI (not yet accepted)" Style="{StaticResource H2}" />
-      <ItemsControl ItemsSource="{Binding ProposedScope}">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate>
-            <Border Style="{StaticResource Card}" BorderBrush="{StaticResource WarningBrush}" BorderThickness="1">
-              <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                  <ui:Button Content="Accept" Appearance="Primary" Margin="0,0,8,0"
-                             Command="{Binding DataContext.AcceptScopeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
-                  <ui:Button Content="Reject"
-                             Command="{Binding DataContext.RejectScopeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
-                </StackPanel>
-                <StackPanel>
-                  <TextBlock FontWeight="SemiBold">
-                    <Run Text="{Binding Host, Mode=OneWay}" /> <Run Text=" · " /> <Run Text="{Binding DataClass, Mode=OneWay}" /> <Run Text=" · " />
-                    <Run Text="{Binding Status, Mode=OneWay}" Foreground="{Binding StatusBrush, Mode=OneWay}" />
-                  </TextBlock>
-                  <TextBlock Text="{Binding Evidence}" Style="{StaticResource Muted}" />
-                </StackPanel>
-              </DockPanel>
-            </Border>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
-
-      <!-- Indicators of compromise extracted by the parser -->
-      <TextBlock Text="Indicators (attacker IPs, accounts, processes, files)" Style="{StaticResource H2}" />
-      <DataGrid ItemsSource="{Binding Indicators}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" Margin="0,0,0,12" MaxHeight="320">
-        <DataGrid.Columns>
-          <DataGridTextColumn Header="Type" Binding="{Binding Kind}" Width="110" />
-          <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="200" FontFamily="Consolas" />
-          <DataGridTemplateColumn Header="Confidence" Width="110">
-            <DataGridTemplateColumn.CellTemplate>
-              <DataTemplate><TextBlock Text="{Binding Confidence}" Foreground="{Binding ConfidenceBrush}" FontWeight="Bold" /></DataTemplate>
-            </DataGridTemplateColumn.CellTemplate>
-          </DataGridTemplateColumn>
-          <DataGridTextColumn Header="What it is" Binding="{Binding Context}" Width="*" />
-          <DataGridTextColumn Header="Seen in" Binding="{Binding Sources}" Width="170" />
-          <DataGridTextColumn Header="Last seen" Binding="{Binding LastSeen}" Width="90" />
-        </DataGrid.Columns>
-      </DataGrid>
-
-      <!-- Record scope by hand -->
-      <Border Style="{StaticResource Card}">
-        <StackPanel>
-          <TextBlock Text="Record affected data" Style="{StaticResource H2}" />
-          <WrapPanel>
-            <StackPanel Margin="0,0,12,8"><TextBlock Text="Host" /><TextBox Text="{Binding AssetHost}" Width="160" /></StackPanel>
-            <StackPanel Margin="0,0,12,8"><TextBlock Text="Data" /><ComboBox ItemsSource="{Binding DataClasses}" SelectedItem="{Binding AssetClass}" Width="190" /></StackPanel>
-            <StackPanel Margin="0,0,12,8"><TextBlock Text="Scope" /><ComboBox ItemsSource="{Binding ScopeLevels}" SelectedItem="{Binding AssetScope}" Width="150" /></StackPanel>
-            <StackPanel Margin="0,0,12,8"><TextBlock Text="Status" /><ComboBox ItemsSource="{Binding Statuses}" SelectedItem="{Binding AssetStatus}" Width="230" /></StackPanel>
-          </WrapPanel>
-          <TextBlock Text="Evidence" />
-          <TextBox Text="{Binding AssetEvidence}" Margin="0,4,0,12" />
-          <ui:Button Content="Save affected data" Command="{Binding AddScopeCommand}" IsEnabled="{Binding CanAct}" />
-        </StackPanel>
-      </Border>
-
-      <!-- Phase (commander) -->
-      <Border Style="{StaticResource Card}">
-        <StackPanel>
-          <TextBlock Text="Move the incident to a new phase" Style="{StaticResource H2}" />
-          <ItemsControl ItemsSource="{Binding Phases}">
+      <!-- Phase bar, always at the bottom (commander) -->
+      <Border DockPanel.Dock="Bottom" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="24,10">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Left" Text="PHASE" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="0,0,14,0" />
+          <ItemsControl ItemsSource="{Binding PhaseOptions}">
             <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <ui:Button Content="{Binding}" Margin="0,0,8,8"
+                <ui:Button Content="{Binding Label}" Margin="0,2,8,2"
                            Command="{Binding DataContext.SetPhaseCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"
-                           IsEnabled="{Binding DataContext.IsCommander, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                           IsEnabled="{Binding DataContext.IsCommander, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                  <ui:Button.Style>
+                    <Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsCurrent}" Value="True"><Setter Property="Appearance" Value="Primary" /></DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </ui:Button.Style>
+                </ui:Button>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-        </StackPanel>
+        </DockPanel>
       </Border>
-    </StackPanel>
-  </ScrollViewer>
+
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="24,20,24,12">
+
+          <!-- Tiles -->
+          <WrapPanel Margin="0,0,0,4">
+            <Border Style="{StaticResource Tile}">
+              <StackPanel>
+                <TextBlock Text="PHASE" Style="{StaticResource Label}" />
+                <TextBlock Text="{Binding PhaseText}" FontSize="20" FontWeight="Bold" Foreground="{Binding PhaseBrush}" />
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Tile}">
+              <StackPanel>
+                <TextBlock Text="SEVERITY" Style="{StaticResource Label}" />
+                <TextBlock Text="{Binding SeverityText}" FontSize="20" FontWeight="Bold" Foreground="{Binding SeverityBrush}" />
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Tile}">
+              <StackPanel>
+                <TextBlock Text="HOSTS AFFECTED" Style="{StaticResource Label}" />
+                <TextBlock Text="{Binding HostCount}" FontSize="20" FontWeight="Bold" />
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Tile}">
+              <StackPanel>
+                <TextBlock Text="INDICATORS" Style="{StaticResource Label}" />
+                <TextBlock Text="{Binding IndicatorCount}" FontSize="20" FontWeight="Bold" />
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Tile}">
+              <StackPanel>
+                <TextBlock Text="DECISIONS WAITING" Style="{StaticResource Label}" />
+                <TextBlock Text="{Binding PendingCount}" FontSize="20" FontWeight="Bold" />
+              </StackPanel>
+            </Border>
+          </WrapPanel>
+
+          <!-- What's happening, according to the parser -->
+          <Border Style="{StaticResource Card}" BorderBrush="{StaticResource AccentBrush}">
+            <StackPanel>
+              <DockPanel Margin="0,0,0,8">
+                <TextBlock DockPanel.Dock="Right" Text="{Binding AiUpdated}" Style="{StaticResource Muted}" FontSize="12" VerticalAlignment="Center" />
+                <TextBlock Text="WHAT'S HAPPENING  ·  AI SUMMARY" Style="{StaticResource Label}" Foreground="{StaticResource AccentBrush}" Margin="0" VerticalAlignment="Center" />
+              </DockPanel>
+              <Border Style="{StaticResource Chip}" Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Margin="0,0,0,10">
+                <TextBlock Text="{Binding Classification}" FontWeight="SemiBold" FontSize="12.5" />
+              </Border>
+              <TextBlock Text="{Binding AiSummary}" TextWrapping="Wrap" FontSize="14.5" LineHeight="21" />
+            </StackPanel>
+          </Border>
+
+          <!-- Affected data -->
+          <TextBlock Text="AFFECTED DATA" Style="{StaticResource Label}" Margin="0,8,0,8" />
+          <Border Style="{StaticResource Card}" Padding="0">
+            <Grid>
+              <TextBlock Text="Nothing recorded yet. The parser fills this in as evidence arrives." Style="{StaticResource Muted}" Margin="16"
+                         Visibility="{Binding HasScope, Converter={StaticResource InvertBoolVis}}" />
+              <DataGrid ItemsSource="{Binding Scope}" AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0"
+                        Visibility="{Binding HasScope, Converter={StaticResource BoolVis}}">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Host" Binding="{Binding Host}" Width="120" />
+                  <DataGridTextColumn Header="Data" Binding="{Binding DataClass}" Width="150" />
+                  <DataGridTextColumn Header="Scope" Binding="{Binding Scope}" Width="100" />
+                  <DataGridTemplateColumn Header="Status" Width="210">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate>
+                        <Border Style="{StaticResource Chip}" Background="{Binding StatusBrush}" Margin="0,4">
+                          <TextBlock Text="{Binding Status}" Style="{StaticResource ChipText}" />
+                        </Border>
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                  <DataGridTextColumn Header="Evidence" Binding="{Binding Evidence}" Width="*" />
+                  <DataGridTextColumn Header="By" Binding="{Binding UpdatedBy}" Width="110" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </Grid>
+          </Border>
+
+          <!-- AI scope proposals (only when auto-accept is off) -->
+          <StackPanel Visibility="{Binding HasProposedScope, Converter={StaticResource BoolVis}}">
+            <TextBlock Text="SUGGESTED BY THE AI, NOT YET ACCEPTED" Style="{StaticResource Label}" Margin="0,4,0,8" />
+            <ItemsControl ItemsSource="{Binding ProposedScope}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Style="{StaticResource Card}" BorderBrush="{StaticResource WarningBrush}" Padding="14,10">
+                    <DockPanel>
+                      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <ui:Button Content="Accept" Appearance="Primary" Margin="0,0,8,0"
+                                   Command="{Binding DataContext.AcceptScopeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                        <ui:Button Content="Reject"
+                                   Command="{Binding DataContext.RejectScopeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                      </StackPanel>
+                      <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock FontWeight="SemiBold" VerticalAlignment="Center"><Run Text="{Binding Host, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding DataClass, Mode=OneWay}" /></TextBlock>
+                          <Border Style="{StaticResource Chip}" Background="{Binding StatusBrush}" Margin="10,0,0,0">
+                            <TextBlock Text="{Binding Status}" Style="{StaticResource ChipText}" />
+                          </Border>
+                        </StackPanel>
+                        <TextBlock Text="{Binding Evidence}" Style="{StaticResource Muted}" Margin="0,4,0,0" />
+                      </StackPanel>
+                    </DockPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+          <!-- Indicators of compromise -->
+          <TextBlock Text="INDICATORS OF COMPROMISE" Style="{StaticResource Label}" Margin="0,8,0,8" />
+          <Border Style="{StaticResource Card}" Padding="0">
+            <Grid>
+              <TextBlock Text="None yet. IPs, accounts, files and processes appear here as the parser finds them." Style="{StaticResource Muted}" Margin="16"
+                         Visibility="{Binding HasIndicators, Converter={StaticResource InvertBoolVis}}" />
+              <DataGrid ItemsSource="{Binding Indicators}" AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0"
+                        Visibility="{Binding HasIndicators, Converter={StaticResource BoolVis}}">
+                <DataGrid.Columns>
+                  <DataGridTemplateColumn Header="Confidence" Width="110">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate>
+                        <Border Style="{StaticResource Chip}" Background="{Binding ConfidenceBrush}" Margin="0,4">
+                          <TextBlock Text="{Binding Confidence}" Style="{StaticResource ChipText}" />
+                        </Border>
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                  <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="110" />
+                  <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="210" FontFamily="{StaticResource MonoFont}" />
+                  <DataGridTextColumn Header="What and why" Binding="{Binding Context}" Width="*" />
+                  <DataGridTextColumn Header="Seen" Binding="{Binding LastSeen}" Width="90" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </Grid>
+          </Border>
+
+          <!-- Record affected data by hand -->
+          <Expander Header="Record affected data by hand" Margin="0,4,0,8">
+            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+              <StackPanel>
+                <WrapPanel>
+                  <StackPanel Margin="0,0,12,8"><TextBlock Text="HOST" Style="{StaticResource Label}" /><TextBox Text="{Binding AssetHost}" Width="150" /></StackPanel>
+                  <StackPanel Margin="0,0,12,8"><TextBlock Text="DATA" Style="{StaticResource Label}" /><ComboBox ItemsSource="{Binding DataClasses}" SelectedItem="{Binding AssetClass}" Width="180" /></StackPanel>
+                  <StackPanel Margin="0,0,12,8"><TextBlock Text="SCOPE" Style="{StaticResource Label}" /><ComboBox ItemsSource="{Binding ScopeLevels}" SelectedItem="{Binding AssetScope}" Width="140" /></StackPanel>
+                  <StackPanel Margin="0,0,12,8"><TextBlock Text="STATUS" Style="{StaticResource Label}" /><ComboBox ItemsSource="{Binding Statuses}" SelectedItem="{Binding AssetStatus}" Width="210" /></StackPanel>
+                </WrapPanel>
+                <TextBlock Text="EVIDENCE" Style="{StaticResource Label}" />
+                <TextBox Text="{Binding AssetEvidence}" Margin="0,0,0,12" />
+                <ui:Button Content="Save affected data" Command="{Binding AddScopeCommand}" IsEnabled="{Binding CanAct}" />
+              </StackPanel>
+            </Border>
+          </Expander>
+        </StackPanel>
+      </ScrollViewer>
+    </DockPanel>
+  </Grid>
 </UserControl>

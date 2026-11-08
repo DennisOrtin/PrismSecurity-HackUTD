@@ -1,0 +1,110 @@
+<UserControl x:Class="IncidentCommand.App.Views.ChatPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:vm="clr-namespace:IncidentCommand.App.ViewModels">
+  <Border Background="{StaticResource SurfaceBrush}">
+    <DockPanel>
+      <!-- Header -->
+      <Border DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Padding="16,12">
+        <DockPanel>
+          <ui:Button DockPanel.Dock="Right" Content="Clear suggestions" Command="{Binding ClearSuggestionsCommand}"
+                     Visibility="{Binding HasSuggestions, Converter={StaticResource BoolVis}}" Padding="10,4" FontSize="12" />
+          <StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="&#xE945;" FontFamily="{StaticResource IconFont}" Foreground="{StaticResource AccentBrush}" FontSize="16" VerticalAlignment="Center" />
+              <TextBlock Text="AI assistant" FontWeight="SemiBold" FontSize="16" Margin="10,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Text="Proposes only. Actions wait for approval; commands wait for you to run them." Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,0" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- Composer -->
+      <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="14,10,14,14">
+        <StackPanel>
+          <DockPanel Margin="0,0,0,8">
+            <TextBlock DockPanel.Dock="Left" Text="Answer with" Style="{StaticResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox ItemsSource="{Binding ModelOptions}" SelectedItem="{Binding SelectedModel}" DisplayMemberPath="Label" FontSize="12" />
+          </DockPanel>
+          <Border Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="10" Padding="4">
+            <DockPanel>
+              <ui:Button DockPanel.Dock="Right" Appearance="Primary" Command="{Binding SendCommand}" IsEnabled="{Binding CanAct}"
+                         VerticalAlignment="Bottom" Margin="4" Padding="12,8" ToolTip="Send (Enter). Shift+Enter for a new line.">
+                <TextBlock Text="&#xE724;" FontFamily="{StaticResource IconFont}" />
+              </ui:Button>
+              <TextBox x:Name="PromptBox" Text="{Binding Prompt, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap"
+                       MinHeight="44" MaxHeight="160" VerticalScrollBarVisibility="Auto" BorderThickness="0" Background="Transparent"
+                       PreviewKeyDown="PromptBox_PreviewKeyDown" />
+            </DockPanel>
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <!-- Conversation: messages and suggested commands in order, then the Continue / Stop card -->
+      <ScrollViewer x:Name="Scroll" VerticalScrollBarVisibility="Auto" Padding="14,12" ScrollChanged="Scroll_ScrollChanged">
+        <StackPanel>
+          <ItemsControl ItemsSource="{Binding Items}">
+            <ItemsControl.Resources>
+
+              <!-- A chat bubble -->
+              <DataTemplate DataType="{x:Type vm:ChatMessageItem}">
+                <StackPanel HorizontalAlignment="{Binding Align}" MaxWidth="560" Margin="0,0,0,12">
+                  <TextBlock FontSize="11.5" Margin="4,0,4,4" HorizontalAlignment="{Binding Align}">
+                    <Run Text="{Binding Author, Mode=OneWay}" Foreground="{Binding AuthorBrush, Mode=OneWay}" FontWeight="SemiBold" /><Run Text="  " /><Run Text="{Binding When, Mode=OneWay}" Foreground="{StaticResource SubTextBrush}" /><Run Text="  " /><Run Text="{Binding ModelLabel, Mode=OneWay}" Foreground="{StaticResource SubTextBrush}" FontStyle="Italic" />
+                  </TextBlock>
+                  <Border Background="{Binding Bubble}" CornerRadius="12" Padding="12,9">
+                    <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent"
+                             BorderThickness="0" Padding="0" Foreground="{StaticResource TextBrush}" />
+                  </Border>
+                </StackPanel>
+              </DataTemplate>
+
+              <!-- A command the AI suggests for the human terminal -->
+              <DataTemplate DataType="{x:Type vm:SuggestionItem}">
+                <Border Background="{StaticResource Surface2Brush}" BorderBrush="{Binding BannerBrush}" BorderThickness="2"
+                        CornerRadius="10" Padding="12" Margin="0,0,0,12">
+                  <Grid>
+                    <Button Content="&#xE711;" FontFamily="{StaticResource IconFont}" FontSize="11" ToolTip="Dismiss this suggestion"
+                            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-4,-4,0" Padding="6,4" Panel.ZIndex="1"
+                            Background="Transparent" BorderThickness="0" Foreground="{StaticResource SubTextBrush}" Cursor="Hand"
+                            Command="{Binding DataContext.DismissCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                    <StackPanel Margin="0,0,24,0">
+                      <TextBlock Text="SUGGESTED COMMAND" Style="{StaticResource Label}" />
+                      <Border Background="{Binding BannerBrush}" CornerRadius="6" Padding="10,7" Margin="0,0,0,10">
+                        <TextBlock Text="{Binding Banner}" Foreground="White" FontWeight="Bold" TextWrapping="Wrap" />
+                      </Border>
+                      <TextBlock Style="{StaticResource Muted}" FontSize="12"><Run Text="on " /><Run Text="{Binding Host, Mode=OneWay}" FontWeight="SemiBold" /><Run Text="  ·  " /><Run Text="{Binding When, Mode=OneWay}" /></TextBlock>
+                      <Border Background="{StaticResource TerminalBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6" Padding="10,8" Margin="0,6,0,8">
+                        <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True" FontFamily="{StaticResource MonoFont}" FontSize="12.5"
+                                 TextWrapping="Wrap" Background="Transparent" BorderThickness="0" Padding="0" Foreground="{StaticResource TextBrush}" />
+                      </Border>
+                      <TextBlock Text="{Binding Details}" Foreground="{Binding BannerBrush}" TextWrapping="Wrap" Margin="0,0,0,6" FontSize="12.5"
+                                 Visibility="{Binding HasDetails, Converter={StaticResource BoolVis}}" />
+                      <TextBlock Text="{Binding Rationale}" Style="{StaticResource Muted}" FontSize="12.5" Margin="0,0,0,10" />
+                      <ui:Button Content="Copy to terminal (does not run)" HorizontalAlignment="Left"
+                                 Command="{Binding DataContext.CopyToTerminalCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.Resources>
+          </ItemsControl>
+
+          <!-- Continue / Stop: the agent's next step is prepared in the background -->
+          <Border Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource WarningBrush}" BorderThickness="2"
+                  CornerRadius="10" Padding="14" Margin="0,0,0,12" Visibility="{Binding HasHeld, Converter={StaticResource BoolVis}}">
+            <StackPanel>
+              <TextBlock Text="KEEP GOING?" Style="{StaticResource Label}" Foreground="{StaticResource WarningBrush}" />
+              <TextBlock Text="{Binding HeldText}" TextWrapping="Wrap" Margin="0,0,0,12" />
+              <StackPanel Orientation="Horizontal">
+                <ui:Button Content="Continue" Appearance="Primary" Margin="0,0,8,0" Command="{Binding ContinueAgentCommand}" />
+                <ui:Button Content="Stop" Command="{Binding StopAgentCommand}" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </DockPanel>
+  </Border>
+</UserControl>

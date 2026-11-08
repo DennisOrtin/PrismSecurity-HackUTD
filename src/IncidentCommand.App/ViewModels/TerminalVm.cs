@@ -7,83 +7,81 @@ using SpacetimeDB.Types;
 
 namespace IncidentCommand.App.ViewModels;
 
-public sealed record CommandRow(string When, string Host, string Command, string IssuedBy, string Status, string Output);
+/// One command and its output, shown like a terminal: prompt line, then the output underneath.
+public sealed record CommandRow(string When, string Host, string Command, string IssuedBy, string Status, Brush StatusBrush,
+                                string Output, bool HasOutput, bool FromAi);
 
-/// An AI-suggested command. NEVER executable from here: "Copy to terminal" only pre-fills the box.
-public sealed record SuggestionCard(ulong Id, string Host, string Text, string Rationale,
-                                    string Banner, Brush BannerBrush, string Details);
-
+/// The human-only terminal at the bottom of the screen. Every command runs on the chosen host over SSH
+/// (through the executor) and is recorded with the user's name and the current incident.
 public partial class TerminalVm : PageVm
 {
+    string _signature = "";
+
     public ObservableCollection<string> Hosts { get; } = new();
     public ObservableCollection<CommandRow> Commands { get; } = new();
-    public ObservableCollection<SuggestionCard> Suggestions { get; } = new();
 
     [ObservableProperty] string? selectedHost;
     [ObservableProperty] string commandText = "";
+    [ObservableProperty] bool hasCommands;
     public bool CanAct => Session.CanAct;
+
+    /// Raised when the chat copies a suggestion in, so the view can focus the input line.
+    public event Action? Prefilled;
 
     public TerminalVm() => Refresh();
 
     public override void Refresh()
     {
         var hosts = Conn.Db.SshHostView.Iter().Select(h => h.Name).OrderBy(n => n).ToList();
-        if (!hosts.SequenceEqual(Hosts)) { Hosts.Clear(); foreach (var h in hosts) Hosts.Add(h); }
+        if (!hosts.SequenceEqual(Hosts))
+        {
+            Hosts.Clear();
+            foreach (var h in hosts) Hosts.Add(h);
+            if (SelectedHost == null || !hosts.Contains(SelectedHost)) SelectedHost = hosts.FirstOrDefault();
+        }
 
-        var outputs = Conn.Db.TerminalOutputView.Iter().ToList();
+        var id = IncidentId;
+        var commands = Conn.Db.TerminalCommandView.Iter().Where(c => c.IncidentId == id).OrderBy(c => c.Id).ToList();
+        var ids = commands.Select(c => c.Id).ToHashSet();
+        var outputs = Conn.Db.TerminalOutputView.Iter().Where(o => ids.Contains(o.CommandId)).ToList();
+
+        // Rebuild only when something changed (keeps the scroll position steady).
+        var sig = $"{id}|{string.Join(",", commands.Select(c => $"{c.Id}:{c.Status}"))}|{outputs.Count}";
+        if (sig == _signature) return;
+        _signature = sig;
+
         Commands.Clear();
-        // Only this incident's commands: the log starts empty for a new incident.
-        foreach (var c in Conn.Db.TerminalCommandView.Iter().Where(c => c.IncidentId == IncidentId).OrderByDescending(c => c.Id).Take(20))
+        foreach (var c in commands.TakeLast(40))   // only this incident's commands: a new incident starts empty
         {
-            var text = string.Concat(outputs.Where(o => o.CommandId == c.Id).OrderBy(o => o.Id).Select(o => o.Chunk));
-            var status = c.Status is TerminalStatus.Done or TerminalStatus.Failed ? $"{c.Status} (exit {c.ExitCode})" : c.Status.ToString();
-            Commands.Add(new CommandRow(Stdb.Ago(c.At), c.Host, c.Command, c.IssuedBy, status, text));
+            var text = string.Concat(outputs.Where(o => o.CommandId == c.Id).OrderBy(o => o.Id).Select(o => o.Chunk)).TrimEnd();
+            var (status, brush) = c.Status switch
+            {
+                TerminalStatus.Done when c.ExitCode == 0 => ("exit 0", Ok),
+                TerminalStatus.Done => ($"exit {c.ExitCode}", Warning),
+                TerminalStatus.Failed => ($"failed (exit {c.ExitCode})", Danger),
+                TerminalStatus.Running => ("running…", Res("AccentBrush")),
+                _ => ("queued…", Neutral),
+            };
+            Commands.Add(new CommandRow(Stdb.Ago(c.At), c.Host, c.Command, c.IssuedBy, status, brush, text, text.Length > 0, c.SuggestionId != 0));
         }
-
-        var reviews = Conn.Db.ReviewView.Iter().Where(r => r.TargetKind == "suggestion").ToList();
-        Suggestions.Clear();
-        foreach (var s in Conn.Db.SuggestionView.Iter().Where(s => s.IncidentId == IncidentId && !s.Dismissed).OrderByDescending(s => s.Id))
-        {
-            var patterns = RiskPatterns.Check(s.Text);
-            var mine = reviews.Where(r => r.TargetId == s.Id).ToList();
-            var reviewRisk = mine.Count == 0 ? (Risk?)null : mine.Max(r => r.Risk);
-
-            // Show the STRONGEST warning from either layer. Neither layer blocks.
-            bool danger = reviewRisk == Risk.Danger || patterns.Count >= 2;
-            bool caution = !danger && (reviewRisk == Risk.Caution || patterns.Count == 1 || reviewRisk == null);
-            var banner = danger ? "DANGER: read every character before running this"
-                       : caution ? (reviewRisk == null ? "NOT REVIEWED YET: treat with caution" : "CAUTION: check this carefully")
-                       : "Reviewer found no concerns. Still written by the AI from attacker-controlled data.";
-            var details = string.Join("\n", patterns.Select(p => "Pattern: " + p)
-                                       .Concat(mine.Where(r => r.Risk != Risk.None).Select(r => "Reviewer: " + r.Reasons)));
-
-            Suggestions.Add(new SuggestionCard(s.Id, s.Host, s.Text, s.Rationale, banner,
-                danger ? Danger : caution ? Warning : Neutral, details));
-        }
+        HasCommands = Commands.Count > 0;
     }
 
     [RelayCommand]
     void Run()
     {
-        if (SelectedHost == null || string.IsNullOrWhiteSpace(CommandText)) return;
+        if (SelectedHost == null) { Session.ReportError("Pick a host first. Hosts are added under Settings."); return; }
+        if (string.IsNullOrWhiteSpace(CommandText)) return;
         if (IncidentId == 0) { Session.ReportError("Open an incident first: terminal commands are recorded against it."); return; }
         Conn.Reducers.RunTerminalCommand(IncidentId, SelectedHost, CommandText.Trim());
         CommandText = "";
     }
 
-    [RelayCommand]
-    void Dismiss(SuggestionCard card) => Conn.Reducers.DismissSuggestion(card.Id);
-
-    [RelayCommand]
-    void ClearSuggestions()
+    /// From the chat's "Copy to terminal": fills in the line, never runs it.
+    public void Prefill(string host, string command)
     {
-        if (IncidentId != 0) Conn.Reducers.ClearSuggestions(IncidentId);
-    }
-
-    [RelayCommand]
-    void CopyToTerminal(SuggestionCard card)
-    {
-        SelectedHost = card.Host;
-        CommandText = card.Text;   // pre-fill only; the human presses Run
+        if (Hosts.Contains(host)) SelectedHost = host;
+        CommandText = command;
+        Prefilled?.Invoke();
     }
 }

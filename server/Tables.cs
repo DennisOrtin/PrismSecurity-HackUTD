@@ -71,6 +71,10 @@ public partial struct Config
     [SpacetimeDB.PrimaryKey] public uint Id;          // always 0
     public bool BootstrapDone;
     public bool AutoApproveReadOnly;
+    // Demo friction: when on, the parser's timeline entries and scope findings go straight onto the record
+    // (labelled as AI). Actions always still need a human.
+    public bool AutoAcceptTimeline;
+    public bool AutoAcceptFindings;
     public ulong UserCounter;
     public string ResponderAddress;                    // the laptop's IP on the network, never a valid target
     // All AI runs locally (LM Studio). Each agent has its own model; read on every call, so changes apply live.

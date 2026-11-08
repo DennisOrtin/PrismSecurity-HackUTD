@@ -154,6 +154,7 @@ public static class Session
         r.OnReviewTimelineEntry += (ctx, _, _) => Check(ctx, "Reviewing the timeline entry");
         r.OnRunTerminalCommand += (ctx, _, _, _) => Check(ctx, "Running the command");
         r.OnDismissSuggestion += (ctx, _) => Check(ctx, "Dismissing the suggestion");
+        r.OnSetAutoAccept += (ctx, _, _) => Check(ctx, "Changing auto-accept");
         r.OnClearSuggestions += (ctx, _) => Check(ctx, "Clearing suggestions");
         r.OnReleaseHeld += (ctx, _) => Check(ctx, "Continuing");
         r.OnDiscardHeld += (ctx, _) => Check(ctx, "Stopping");

@@ -4,11 +4,16 @@
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         Title="Incident Command - Locked" Width="560" Height="760"
         WindowStartupLocation="CenterScreen" FontSize="15"
-        Background="{DynamicResource ApplicationBackgroundBrush}"
-        Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+        Background="{StaticResource BgBrush}"
+        Foreground="{StaticResource TextBrush}">
   <ScrollViewer VerticalScrollBarVisibility="Auto">
-    <StackPanel Margin="32">
-      <TextBlock Text="Incident Command" Style="{StaticResource H1}" />
+    <Border Style="{StaticResource Card}" Margin="24" Padding="28">
+    <StackPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+        <TextBlock Text="&#xE72E;" FontFamily="{StaticResource IconFont}" FontSize="22" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+        <TextBlock Text="Incident Command" Style="{StaticResource H1}" Margin="12,0,0,0" />
+      </StackPanel>
+      <TextBlock Text="Offline command center · this laptop accepts no network connections" Style="{StaticResource Muted}" FontSize="12.5" Margin="0,0,0,20" />
       <TextBlock x:Name="ErrorText" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" Margin="0,0,0,12" Visibility="Collapsed" />
 
       <!-- Log in -->
@@ -58,5 +63,6 @@
         <ui:Button Content="Back to log in" Margin="0,12,0,0" HorizontalAlignment="Stretch" Click="ShowLogin_Click" />
       </StackPanel>
     </StackPanel>
+    </Border>
   </ScrollViewer>
 </Window>

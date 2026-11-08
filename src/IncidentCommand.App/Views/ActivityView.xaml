@@ -1,0 +1,147 @@
+<UserControl x:Class="IncidentCommand.App.Views.ActivityView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:vm="clr-namespace:IncidentCommand.App.ViewModels">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="24,20,24,24">
+      <TextBlock Text="Actions &amp; timeline" Style="{StaticResource H1}" />
+
+      <!-- ===== The AI's plan and the note for the next decision ===== -->
+      <Border Style="{StaticResource Card}" BorderBrush="{StaticResource AccentBrush}">
+        <StackPanel>
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Right" Text="{Binding PlanBy}" Style="{StaticResource Muted}" FontSize="12" FontStyle="Italic" VerticalAlignment="Center" />
+            <TextBlock Text="THE AI'S PLAN" Style="{StaticResource Label}" Foreground="{StaticResource AccentBrush}" />
+          </DockPanel>
+          <TextBlock Text="{Binding PlanReasoning}" TextWrapping="Wrap" FontSize="14.5" LineHeight="21" Margin="0,2,0,14" />
+          <TextBlock Text="NOTE ATTACHED TO YOUR NEXT DECISION (optional)" Style="{StaticResource Label}" />
+          <DockPanel>
+            <ui:Button DockPanel.Dock="Right" Content="Approve all read-only steps" Command="{Binding ApproveAllReadOnlyCommand}"
+                       IsEnabled="{Binding CanAct}" Margin="10,0,0,0" />
+            <TextBox Text="{Binding Note, UpdateSourceTrigger=PropertyChanged}" />
+          </DockPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- ===== Waiting for a decision ===== -->
+      <StackPanel Visibility="{Binding HasPending, Converter={StaticResource BoolVis}}">
+        <TextBlock Text="WAITING FOR YOUR DECISION" Style="{StaticResource Label}" Margin="0,10,0,8" />
+        <ItemsControl ItemsSource="{Binding Pending}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border Style="{StaticResource Card}" Padding="0" BorderBrush="{Binding TierBrush}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="5" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <Border Background="{Binding TierBrush}" CornerRadius="10,0,0,10" />
+                  <StackPanel Grid.Column="1" Margin="16,14,16,14">
+                    <DockPanel>
+                      <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Background="{Binding TierBrush}">
+                        <TextBlock Text="{Binding TierText}" Style="{StaticResource ChipText}" />
+                      </Border>
+                      <TextBlock Text="{Binding StepText}" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="0" />
+                    </DockPanel>
+                    <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" Margin="0,6,0,0" TextWrapping="Wrap" />
+                    <Border Background="{StaticResource TerminalBrush}" CornerRadius="6" Padding="10,6" Margin="0,8,0,0" HorizontalAlignment="Left"
+                            Visibility="{Binding HasParams, Converter={StaticResource BoolVis}}">
+                      <TextBlock Text="{Binding ParamsText}" FontFamily="{StaticResource MonoFont}" FontSize="12.5" />
+                    </Border>
+                    <TextBlock Text="{Binding Rationale}" TextWrapping="Wrap" Margin="0,10,0,0" />
+                    <TextBlock Text="{Binding ReviewText}" Foreground="{Binding ReviewBrush}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    <DockPanel Margin="0,12,0,0">
+                      <TextBlock DockPanel.Dock="Right" Style="{StaticResource Muted}" FontSize="11.5" VerticalAlignment="Center">
+                        <Run Text="fingerprint " /><Run Text="{Binding HashShort, Mode=OneWay}" FontFamily="{StaticResource MonoFont}" />
+                      </TextBlock>
+                      <StackPanel Orientation="Horizontal">
+                        <ui:Button Content="{Binding ApproveLabel}" Appearance="Primary" Margin="0,0,8,0" IsEnabled="{Binding Ready}"
+                                   Command="{Binding DataContext.ApproveCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                        <ui:Button Content="Deny"
+                                   Command="{Binding DataContext.DenyCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                      </StackPanel>
+                    </DockPanel>
+                  </StackPanel>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+
+      <!-- ===== One timeline: actions and entries, newest first ===== -->
+      <DockPanel Margin="0,14,0,8">
+        <TextBlock Text="TIMELINE" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="0" />
+      </DockPanel>
+      <Border Style="{StaticResource Card}" Padding="12">
+        <DockPanel>
+          <ComboBox DockPanel.Dock="Left" ItemsSource="{Binding Categories}" SelectedItem="{Binding EntryCategory}" Width="160" Margin="0,0,8,0"
+                    ToolTip="Picking a phase also moves the incident to that phase (commander)" />
+          <ui:Button DockPanel.Dock="Right" Content="Add to timeline" Command="{Binding AddEntryCommand}" IsEnabled="{Binding CanAct}" Margin="8,0,0,0" />
+          <TextBox Text="{Binding EntryText, UpdateSourceTrigger=PropertyChanged}" />
+        </DockPanel>
+      </Border>
+
+      <ItemsControl ItemsSource="{Binding Feed}">
+        <ItemsControl.Resources>
+
+          <!-- A finished, running or denied action -->
+          <DataTemplate DataType="{x:Type vm:ActionEvent}">
+            <Border Style="{StaticResource Card}" Padding="14,10">
+              <Expander>
+                <Expander.Header>
+                  <DockPanel>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding When}" Style="{StaticResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="12,0,0,0" />
+                    <StackPanel Orientation="Horizontal">
+                      <Border Style="{StaticResource Chip}" Background="{Binding StatusBrush}" Margin="0,0,10,0">
+                        <TextBlock Text="{Binding Status}" Style="{StaticResource ChipText}" />
+                      </Border>
+                      <TextBlock Text="&#xE90F;" FontFamily="{StaticResource IconFont}" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                      <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                        <TextBlock Style="{StaticResource Muted}" FontSize="12">
+                          <Run Text="{Binding ParamsText, Mode=OneWay}" FontFamily="{StaticResource MonoFont}" /><Run Text="   " /><Run Text="{Binding By, Mode=OneWay}" />
+                        </TextBlock>
+                      </StackPanel>
+                    </StackPanel>
+                  </DockPanel>
+                </Expander.Header>
+                <Border Background="{StaticResource TerminalBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6"
+                        Padding="10,8" Margin="0,8,0,0" Visibility="{Binding HasOutput, Converter={StaticResource BoolVis}}">
+                  <TextBox Text="{Binding Output, Mode=OneWay}" IsReadOnly="True" FontFamily="{StaticResource MonoFont}" FontSize="12.5"
+                           TextWrapping="Wrap" Background="Transparent" BorderThickness="0" Padding="0" MaxHeight="320" VerticalScrollBarVisibility="Auto" />
+                </Border>
+              </Expander>
+            </Border>
+          </DataTemplate>
+
+          <!-- A timeline entry -->
+          <DataTemplate DataType="{x:Type vm:EntryEvent}">
+            <Border Style="{StaticResource Card}" Padding="14,10">
+              <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0"
+                            Visibility="{Binding IsAiDraft, Converter={StaticResource BoolVis}}">
+                  <ui:Button Content="{Binding AcceptLabel}" Appearance="Primary" Margin="0,0,8,0"
+                             Command="{Binding DataContext.AcceptCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                  <ui:Button Content="Reject"
+                             Command="{Binding DataContext.RejectCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                </StackPanel>
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <Border Style="{StaticResource Chip}" Background="{Binding CategoryBrush}" Margin="0,0,10,0">
+                      <TextBlock Text="{Binding Category}" Style="{StaticResource ChipText}" />
+                    </Border>
+                    <TextBlock Text="{Binding Author}" Foreground="{Binding AuthorBrush}" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding When}" Style="{StaticResource Muted}" FontSize="12" Margin="10,0,0,0" VerticalAlignment="Center" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                </StackPanel>
+              </DockPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.Resources>
+      </ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

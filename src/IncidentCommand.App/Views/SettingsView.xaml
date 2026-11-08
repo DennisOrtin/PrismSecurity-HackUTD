@@ -62,7 +62,10 @@
             <ui:Button DockPanel.Dock="Right" Content="Save" Command="{Binding SaveResponderAddressCommand}" IsEnabled="{Binding IsCommander}" Margin="8,0,0,0" />
             <TextBox Text="{Binding ResponderAddress}" />
           </DockPanel>
-          <CheckBox Content="Approve read-only AI steps automatically (they look, never change anything)" IsChecked="{Binding AutoApproveReadOnly}" IsEnabled="{Binding IsCommander}" />
+          <CheckBox Content="Approve read-only AI steps automatically (they look, never change anything)" IsChecked="{Binding AutoApproveReadOnly}" IsEnabled="{Binding IsCommander}" Margin="0,0,0,8" />
+          <CheckBox Content="Accept AI timeline entries automatically (phase changes too, except closing the incident)" IsChecked="{Binding AutoAcceptTimeline}" IsEnabled="{Binding IsCommander}" Margin="0,0,0,8" />
+          <CheckBox Content="Accept AI findings automatically (affected data; indicators are always recorded)" IsChecked="{Binding AutoAcceptFindings}" IsEnabled="{Binding IsCommander}" Margin="0,0,0,4" />
+          <TextBlock Style="{StaticResource Muted}" FontSize="12" Text="Everything accepted automatically stays labelled as AI. Actions always need a human." />
         </StackPanel>
       </Border>
 

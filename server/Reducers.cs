@@ -12,6 +12,7 @@ public static partial class Module
         ctx.Db.Config.Insert(new Config
         {
             Id = 0, BootstrapDone = false, AutoApproveReadOnly = false, UserCounter = 0, ResponderAddress = "",
+            AutoAcceptTimeline = true, AutoAcceptFindings = true,
             AgentModel = "", ReviewerModel = "", ParserModel = "",
             AgentEnabled = true, ReviewerEnabled = true, ExecutorEnabled = true, ParserEnabled = true,
         });
@@ -163,6 +164,14 @@ public static partial class Module
         if (!IsIPv4(address)) throw new Exception("Must be an IPv4 address.");
         ctx.Db.Config.Id.Update(GetConfig(ctx) with { ResponderAddress = address });
         WriteAudit(ctx, u.Username, "set_responder_address", Payload("address", address));
+    }
+
+    [SpacetimeDB.Reducer]
+    public static void SetAutoAccept(ReducerContext ctx, bool timeline, bool findings)
+    {
+        var u = Require(ctx, Role.Commander);
+        ctx.Db.Config.Id.Update(GetConfig(ctx) with { AutoAcceptTimeline = timeline, AutoAcceptFindings = findings });
+        WriteAudit(ctx, u.Username, "set_auto_accept", Payload("timeline", timeline, "findings", findings));
     }
 
     [SpacetimeDB.Reducer]
@@ -438,7 +447,26 @@ public static partial class Module
     public static void ProposeTimelineEntry(ReducerContext ctx, ulong incidentId, string category, string text)
     {
         var u = Require(ctx, Role.Agent, Role.Parser);
-        AddEntry(ctx, incidentId, u.Username, AuthorKind.Assistant, category, text, false);
+        var cfg = GetConfig(ctx);
+        if (!cfg.AutoAcceptTimeline)
+        {
+            AddEntry(ctx, incidentId, u.Username, AuthorKind.Assistant, category, text, false);
+            return;
+        }
+        // Auto-accept: straight onto the timeline. A phase category moves the incident too,
+        // except Closed: closing always stays a human decision.
+        if (Enum.TryParse<Phase>(category, out var phase))
+        {
+            if (phase == Phase.Closed)
+            {
+                AddEntry(ctx, incidentId, u.Username, AuthorKind.Assistant, category, text, false);
+                return;
+            }
+            var inc = ctx.Db.Incident.Id.Find(incidentId);
+            if (inc is not null && inc.Value.Phase != Phase.Closed && inc.Value.Phase != phase)
+                ChangePhase(ctx, inc.Value, phase, u.Username, "AI timeline entry, auto-accepted");
+        }
+        AddEntry(ctx, incidentId, u.Username, AuthorKind.Assistant, category, text, true);
     }
 
     [SpacetimeDB.Reducer]
@@ -448,6 +476,29 @@ public static partial class Module
         var u = Require(ctx, Role.Agent, Role.Parser);
         if (ctx.Db.Incident.Id.Find(incidentId) is null) throw new Exception("No such incident.");
         var same = ctx.Db.Asset.IncidentId.Filter(incidentId).Where(a => a.Host == host && a.DataClass == dataClass).ToList();
+
+        // Auto-accept: one accepted row per host + data class, kept current.
+        if (GetConfig(ctx).AutoAcceptFindings)
+        {
+            if (same.Count > 0)
+            {
+                ctx.Db.Asset.Id.Update(same[0] with
+                {
+                    ScopeLevel = scopeLevel, Status = status, Evidence = evidence, UpdatedBy = u.Username,
+                    UpdatedAt = ctx.Timestamp, Accepted = true,
+                });
+                foreach (var dup in same.Skip(1)) ctx.Db.Asset.Id.Delete(dup.Id);
+            }
+            else
+            {
+                ctx.Db.Asset.Insert(new Asset
+                {
+                    Id = 0, IncidentId = incidentId, Host = host, DataClass = dataClass, ScopeLevel = scopeLevel, Status = status,
+                    Evidence = evidence, UpdatedBy = u.Username, UpdatedAt = ctx.Timestamp, Accepted = true,
+                });
+            }
+            return;
+        }
 
         // Already accepted by a human with the same status and scope: nothing new to propose.
         if (same.Any(a => a.Accepted && a.Status == status && a.ScopeLevel == scopeLevel)) return;

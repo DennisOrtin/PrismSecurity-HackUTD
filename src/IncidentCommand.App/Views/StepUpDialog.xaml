@@ -4,8 +4,8 @@
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         Title="Confirm it's you" Width="460" SizeToContent="Height"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize" FontSize="15"
-        Background="{DynamicResource ApplicationBackgroundBrush}"
-        Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+        Background="{StaticResource SurfaceBrush}"
+        Foreground="{StaticResource TextBrush}">
   <StackPanel Margin="24">
     <TextBlock x:Name="WhatText" TextWrapping="Wrap" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
     <TextBlock Style="{StaticResource Muted}" Text="This action changes the network. Enter your password to approve it." Margin="0,0,0,12" />

@@ -1,0 +1,68 @@
+<UserControl x:Class="IncidentCommand.App.Views.TerminalPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+  <Border Background="{StaticResource TerminalBrush}">
+    <DockPanel>
+      <!-- Header strip (drag the line just above it to resize) -->
+      <Border DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Height="38" Padding="14,0">
+        <DockPanel>
+          <Button x:Name="CollapseButton" DockPanel.Dock="Right" Click="Collapse_Click" Background="Transparent" BorderThickness="0"
+                  Cursor="Hand" ToolTip="Minimise or restore the terminal" Padding="8,4" VerticalAlignment="Center">
+            <TextBlock x:Name="CollapseGlyph" Text="&#xE70D;" FontFamily="{StaticResource IconFont}" Foreground="{StaticResource SubTextBrush}" />
+          </Button>
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <TextBlock Text="&#xE756;" FontFamily="{StaticResource IconFont}" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="TERMINAL" FontWeight="Bold" FontSize="12" Margin="10,0,0,0" VerticalAlignment="Center" />
+            <TextBlock Text="Human only · runs over SSH on the chosen host · every command is recorded with your name"
+                       Style="{StaticResource Muted}" FontSize="12" Margin="14,0,0,0" VerticalAlignment="Center" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- Input line -->
+      <Border x:Name="InputArea" DockPanel.Dock="Bottom" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="12,8">
+        <DockPanel>
+          <ComboBox DockPanel.Dock="Left" ItemsSource="{Binding Hosts}" SelectedItem="{Binding SelectedHost}" Width="130" Margin="0,0,8,0"
+                    ToolTip="Host the command runs on" />
+          <ui:Button DockPanel.Dock="Right" Content="Run" Appearance="Primary" Command="{Binding RunCommand}" IsEnabled="{Binding CanAct}" Margin="8,0,0,0" />
+          <TextBlock DockPanel.Dock="Left" Text="$" FontFamily="{StaticResource MonoFont}" FontSize="15" Foreground="{StaticResource OkBrush}"
+                     VerticalAlignment="Center" Margin="2,0,8,0" />
+          <TextBox x:Name="CommandBox" Text="{Binding CommandText, UpdateSourceTrigger=PropertyChanged}" FontFamily="{StaticResource MonoFont}"
+                   FontSize="13.5" PreviewKeyDown="CommandBox_PreviewKeyDown" ToolTip="Enter runs the command" />
+        </DockPanel>
+      </Border>
+
+      <!-- Commands flow downward; each one's output sits right under it, like VS Code -->
+      <ScrollViewer x:Name="Scroll" VerticalScrollBarVisibility="Auto" Padding="14,10,14,6" ScrollChanged="Scroll_ScrollChanged">
+        <StackPanel>
+          <TextBlock Text="No commands yet for this incident. Pick a host, type a command, press Enter. AI-suggested commands arrive in the chat; 'Copy to terminal' puts them here."
+                     Style="{StaticResource Muted}" FontFamily="{StaticResource MonoFont}" FontSize="12.5"
+                     Visibility="{Binding HasCommands, Converter={StaticResource InvertBoolVis}}" />
+          <ItemsControl x:Name="CommandList" ItemsSource="{Binding Commands}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Margin="0,0,0,12">
+                  <!-- prompt line -->
+                  <TextBlock FontFamily="{StaticResource MonoFont}" FontSize="13.5" TextWrapping="Wrap">
+                    <Run Text="{Binding IssuedBy, Mode=OneWay}" Foreground="{StaticResource SubTextBrush}" /><Run Text="@" Foreground="{StaticResource SubTextBrush}" /><Run Text="{Binding Host, Mode=OneWay}" Foreground="{StaticResource OkBrush}" FontWeight="SemiBold" /><Run Text=" $ " Foreground="{StaticResource SubTextBrush}" /><Run Text="{Binding Command, Mode=OneWay}" Foreground="{StaticResource TextBrush}" />
+                  </TextBlock>
+                  <TextBlock FontSize="11.5" Margin="0,2,0,4">
+                    <Run Text="{Binding When, Mode=OneWay}" Foreground="{StaticResource SubTextBrush}" /><Run Text="  ·  " Foreground="{StaticResource SubTextBrush}" /><Run Text="{Binding Status, Mode=OneWay}" Foreground="{Binding StatusBrush, Mode=OneWay}" FontWeight="SemiBold" />
+                  </TextBlock>
+                  <!-- output, in a slightly lighter box with an outline -->
+                  <Border Background="{StaticResource TerminalOutputBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                          CornerRadius="6" Padding="10,8" Visibility="{Binding HasOutput, Converter={StaticResource BoolVis}}">
+                    <TextBox Text="{Binding Output, Mode=OneWay}" IsReadOnly="True" FontFamily="{StaticResource MonoFont}" FontSize="12.5"
+                             Background="Transparent" BorderThickness="0" Padding="0" TextWrapping="Wrap" Foreground="#C9D3E3"
+                             MaxHeight="360" VerticalScrollBarVisibility="Auto" />
+                  </Border>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </ScrollViewer>
+    </DockPanel>
+  </Border>
+</UserControl>
