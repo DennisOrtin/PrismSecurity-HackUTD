@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- PostureHelper.exe check-all --out <file>      (unelevated)
-       PostureHelper.exe fix <check-id> --out <file>  (elevated by the app, one UAC prompt)
-       PostureHelper.exe undo <check-id> --out <file> (elevated)
-       It only knows the fixed list of checks below. Anything else exits with an error. -->
+  <!-- PostureHelper.exe: check-all | fix <check-id> | undo <check-id>, plus an output-file argument.
+       check-all runs unelevated; fix and undo are elevated by the app, one UAC prompt each.
+       It only knows its fixed list of checks. Anything else exits with an error. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
