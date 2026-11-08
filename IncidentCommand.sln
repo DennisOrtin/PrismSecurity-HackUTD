@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IncidentCommand.Executor", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IncidentCommand.PostureHelper", "src\IncidentCommand.PostureHelper\IncidentCommand.PostureHelper.csproj", "{CB7BF9D9-CC0C-46B5-AD54-BD450B4A8312}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StdbModule", "server\StdbModule.csproj", "{2887F723-D243-4D12-848B-BA2BF04123B9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -44,6 +46,10 @@ Global
 		{CB7BF9D9-CC0C-46B5-AD54-BD450B4A8312}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CB7BF9D9-CC0C-46B5-AD54-BD450B4A8312}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CB7BF9D9-CC0C-46B5-AD54-BD450B4A8312}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2887F723-D243-4D12-848B-BA2BF04123B9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2887F723-D243-4D12-848B-BA2BF04123B9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2887F723-D243-4D12-848B-BA2BF04123B9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2887F723-D243-4D12-848B-BA2BF04123B9}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{CCD729D0-A791-41AC-ABAA-AE3BC679BE0B} = {75C96705-8F88-4E39-8F24-1FD14139EA2E}
