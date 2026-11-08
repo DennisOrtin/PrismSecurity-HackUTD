@@ -76,27 +76,7 @@
         <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
         <Setter Property="CaretBrush" Value="{StaticResource TextBrush}" />
       </Style>
-      <Style TargetType="{x:Type ComboBox}">
-        <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-      </Style>
-      <Style TargetType="{x:Type ComboBoxItem}">
-        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-        <Style.Triggers>
-          <Trigger Property="IsMouseOver" Value="True">
-            <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
-          </Trigger>
-          <Trigger Property="IsSelected" Value="True">
-            <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-          </Trigger>
-        </Style.Triggers>
-      </Style>
-      <Style TargetType="{x:Type CheckBox}">
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-      </Style>
+
       <Style TargetType="{x:Type ListBox}">
         <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
         <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
@@ -116,53 +96,6 @@
         </Style.Triggers>
       </Style>
 
-      <Style TargetType="{x:Type Button}">
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-        <Setter Property="BorderBrush" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0" />
-        <Style.Triggers>
-          <Trigger Property="IsMouseOver" Value="True">
-            <Setter Property="Background" Value="{StaticResource ButtonHoverBrush}" />
-          </Trigger>
-          <Trigger Property="IsPressed" Value="True">
-            <Setter Property="Background" Value="{StaticResource ButtonHoverBrush}" />
-          </Trigger>
-        </Style.Triggers>
-      </Style>
-      <Style TargetType="{x:Type ui:Button}" BasedOn="{StaticResource {x:Type ui:Button}}">
-        <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-        <Setter Property="MouseOverBackground" Value="{StaticResource ButtonHoverBrush}" />
-        <Setter Property="PressedBackground" Value="{StaticResource ButtonHoverBrush}" />
-        <Setter Property="MouseOverBorderBrush" Value="{StaticResource ButtonHoverBrush}" />
-        <Setter Property="PressedBorderBrush" Value="{StaticResource ButtonHoverBrush}" />
-        <Style.Triggers>
-          <Trigger Property="Appearance" Value="Primary">
-            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-            <Setter Property="MouseOverBackground" Value="{StaticResource PrimaryButtonHoverBrush}" />
-            <Setter Property="PressedBackground" Value="{StaticResource PrimaryButtonHoverBrush}" />
-            <Setter Property="MouseOverBorderBrush" Value="{StaticResource PrimaryButtonHoverBrush}" />
-            <Setter Property="PressedBorderBrush" Value="{StaticResource PrimaryButtonHoverBrush}" />
-          </Trigger>
-          <Trigger Property="Appearance" Value="Danger">
-            <Setter Property="Background" Value="{StaticResource DangerBrush}" />
-            <Setter Property="MouseOverBackground" Value="{StaticResource DangerButtonHoverBrush}" />
-            <Setter Property="PressedBackground" Value="{StaticResource DangerButtonHoverBrush}" />
-            <Setter Property="MouseOverBorderBrush" Value="{StaticResource DangerButtonHoverBrush}" />
-            <Setter Property="PressedBorderBrush" Value="{StaticResource DangerButtonHoverBrush}" />
-          </Trigger>
-          <Trigger Property="IsEnabled" Value="False">
-            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
-            <Setter Property="Foreground" Value="{StaticResource SubTextBrush}" />
-            <Setter Property="MouseOverBackground" Value="{StaticResource SurfaceBrush}" />
-            <Setter Property="PressedBackground" Value="{StaticResource SurfaceBrush}" />
-            <Setter Property="MouseOverBorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="PressedBorderBrush" Value="{StaticResource LineBrush}" />
-          </Trigger>
-        </Style.Triggers>
-      </Style>
 
       <!-- ============ Text ============ -->
       <Style x:Key="H1" TargetType="TextBlock">
