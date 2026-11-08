@@ -16,6 +16,9 @@ using SpacetimeDB;
 [SpacetimeDB.Type] public enum Risk { None, Caution, Danger }
 [SpacetimeDB.Type] public enum RequestStatus { Pending, Planned, Failed }
 [SpacetimeDB.Type] public enum TerminalStatus { Queued, Running, Done, Failed }
+[SpacetimeDB.Type] public enum AiProvider { Local, Cloud }        // Local = LM Studio on this laptop; Cloud = NVIDIA Brev (dev/testing)
+[SpacetimeDB.Type] public enum AiModel { Nano, Lightning }        // Nemotron 3.5 Nano 4B | Nemotron 3.5 Lightning
+[SpacetimeDB.Type] public enum ModelChoice { Default, Nano, Lightning }   // per-request override
 
 [SpacetimeDB.Type]
 public partial struct Param
@@ -70,6 +73,9 @@ public partial struct Config
     public bool AutoApproveReadOnly;
     public ulong UserCounter;
     public string ResponderAddress;                    // the laptop's IP on the network, never a valid target
+    public AiProvider AiProvider;                      // switched live by the commander; agent + reviewer read it per call
+    public AiModel AgentModel;
+    public AiModel ReviewerModel;
 }
 
 [SpacetimeDB.Table(Accessor = "SshHost")]
@@ -164,6 +170,8 @@ public partial struct AgentRequest
     public string Text;
     public Timestamp At;
     public RequestStatus Status;
+    public ModelChoice Model;                          // Default = use Config.AgentModel
+    public byte Depth;                                 // 0 = asked by a human or an event; +1 per automatic follow-up
 }
 
 [SpacetimeDB.Table(Accessor = "Plan")]
@@ -178,6 +186,7 @@ public partial struct Plan
     public string Reasoning;
     public Timestamp CreatedAt;
     public bool Active;
+    public string ModelLabel;                          // e.g. "Nemotron 3.5 Nano 4B · local"
 }
 
 // Named ResponseAction to avoid clashing with System.Action.
@@ -246,6 +255,7 @@ public partial struct Message
     public AuthorKind AuthorKind;
     public string Text;
     public Timestamp At;
+    public string ModelLabel;                          // which model wrote it ("" for humans)
 }
 
 // ---------- Human terminal ----------

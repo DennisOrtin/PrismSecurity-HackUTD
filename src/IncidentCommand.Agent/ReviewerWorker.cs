@@ -45,16 +45,20 @@ public sealed class ReviewerWorker
 
     void Start(string kind, ulong id, string key, string item)
     {
+        var provider = AiProvider.Local;
+        var model = AiModel.Nano;
+        foreach (var c in _runner.Conn!.Db.ConfigView.Iter()) { provider = c.AiProvider; model = c.ReviewerModel; }
+        var label = AiNames.Label(model, provider);
         _busy = true;
         _done.Add(key);
-        ServiceRunner.Log($"Reviewing {key}");
+        ServiceRunner.Log($"Reviewing {key} with {label}");
         Task.Run(async () =>
         {
             Risk risk = Risk.Caution;
             string reasons = "The reviewer's answer could not be read, so treat this with caution.";
             try
             {
-                var reply = await _model.ChatAsync(Prompts.ReviewerSystem, item, tools: null, temperature: 0);
+                var reply = await _model.ChatAsync(provider, model, Prompts.ReviewerSystem, item, tools: null, temperature: 0);
                 var text = reply.Content ?? "";
                 var start = text.IndexOf('{');
                 var end = text.LastIndexOf('}');
@@ -69,10 +73,10 @@ public sealed class ReviewerWorker
 
             _runner.Post(c =>
             {
-                c.Reducers.AttachReview(kind, id, risk, reasons);
+                c.Reducers.AttachReview(kind, id, risk, $"{reasons} ({label})");
                 if (risk == Risk.Danger && kind == "suggestion")
                     foreach (var s in c.Db.SuggestionView.Iter().Where(s => s.Id == id))
-                        c.Reducers.PostAiMessage(s.IncidentId, $"Reviewer: the suggested command for {s.Host} is DANGEROUS. {reasons}");
+                        c.Reducers.PostAiMessage(s.IncidentId, $"Reviewer: the suggested command for {s.Host} is DANGEROUS. {reasons}", label);
             });
         });
     }

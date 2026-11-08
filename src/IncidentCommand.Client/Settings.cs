@@ -2,17 +2,46 @@ using System.Text.Json;
 
 namespace IncidentCommand.Client;
 
-/// Local settings, stored next to the vaults. Everything defaults to loopback.
+/// One AI endpoint (OpenAI-compatible /chat/completions) and the model ID each Nemotron model has there.
+/// Model IDs differ per provider: copy them from LM Studio's server tab, or from your Brev deployment.
+public sealed class AiEndpoint
+{
+    public string BaseUrl { get; set; } = "";
+    public string ApiKey { get; set; } = "";
+    public string NanoModel { get; set; } = "";
+    public string LightningModel { get; set; } = "";
+}
+
+public sealed class AiSettings
+{
+    /// LM Studio on this laptop. Final build: this is the only provider used.
+    public AiEndpoint Local { get; set; } = new()
+    {
+        BaseUrl = "http://127.0.0.1:1234/v1",
+        ApiKey = "lm-studio",
+        NanoModel = "nvidia-nemotron-3.5-nano-4b",
+        LightningModel = "nvidia-nemotron-3.5-lightning",
+    };
+
+    /// NVIDIA Brev deployment (OpenAI-compatible). DEVELOPMENT/TESTING ONLY: incident data leaves the laptop.
+    public AiEndpoint Cloud { get; set; } = new()
+    {
+        BaseUrl = "https://YOUR-BREV-DEPLOYMENT/v1",
+        ApiKey = "",
+        NanoModel = "nvidia/nemotron-3.5-nano-4b",
+        LightningModel = "nvidia/nemotron-3.5-lightning",
+    };
+}
+
+/// Local settings, stored in %LOCALAPPDATA%\IncidentCommand\settings.json. Re-saved on load so new fields appear.
 public sealed class Settings
 {
     public string ServerUri { get; set; } = "http://127.0.0.1:3000";
     public string DatabaseName { get; set; } = "incident-command";
 
-    /// Any OpenAI-compatible endpoint. FINAL BUILD: must be loopback (the posture panel checks this).
-    /// During development only, this may point at a Brev-hosted endpoint.
-    public string ModelBaseUrl { get; set; } = "http://127.0.0.1:8000/v1";
-    public string ModelName { get; set; } = "nemotron-3.5-nano-4b";
-    public string ModelApiKey { get; set; } = "";
+    /// Which provider and models are ACTIVE is stored in the database (commander switches it live).
+    /// This file only holds where each provider lives and what each model is called there.
+    public AiSettings Ai { get; set; } = new();
 
     /// Executor: private key used for SSH into the network (break-glass key, rotate after the incident).
     public string SshUser { get; set; } = "root";
@@ -23,15 +52,17 @@ public sealed class Settings
 
     static Settings? _current;
     public static Settings Current => _current ??= Load();
+    public static string FilePath => Path.Combine(AppPaths.Root, "settings.json");
+
+    static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
     static Settings Load()
     {
-        var path = Path.Combine(AppPaths.Root, "settings.json");
-        if (File.Exists(path))
-            return JsonSerializer.Deserialize<Settings>(File.ReadAllText(path)) ?? new Settings();
-        var s = new Settings();
         Directory.CreateDirectory(AppPaths.Root);
-        File.WriteAllText(path, JsonSerializer.Serialize(s, new JsonSerializerOptions { WriteIndented = true }));
+        var s = File.Exists(FilePath)
+            ? JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings()
+            : new Settings();
+        try { File.WriteAllText(FilePath, JsonSerializer.Serialize(s, Json)); } catch { /* read-only is fine */ }
         return s;
     }
 }
@@ -45,4 +76,17 @@ public static class AppPaths
     public static string PostureUndo => Path.Combine(Ensure(Root), "posture-undo.json");
 
     static string Ensure(string p) { Directory.CreateDirectory(p); return p; }
+}
+
+/// Display names shared by the app and the agent.
+public static class AiNames
+{
+    public static string Model(SpacetimeDB.Types.AiModel m) => m switch
+    {
+        SpacetimeDB.Types.AiModel.Lightning => "Nemotron 3.5 Lightning",
+        _ => "Nemotron 3.5 Nano 4B",
+    };
+
+    public static string Label(SpacetimeDB.Types.AiModel m, SpacetimeDB.Types.AiProvider p) =>
+        $"{Model(m)} · {(p == SpacetimeDB.Types.AiProvider.Cloud ? "cloud" : "local")}";
 }

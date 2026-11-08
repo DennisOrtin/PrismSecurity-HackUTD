@@ -18,21 +18,17 @@ public partial class LockWindow : Window
         {
             if (!Application.Current.Windows.OfType<MainWindow>().Any()) Application.Current.Shutdown();
         };
-        var users = Vault.Usernames();
-        if (users.Count == 0) ShowSetup();
-        else
-        {
-            UserBox.ItemsSource = users;
-            UserBox.SelectedIndex = 0;
-        }
+        // Usernames are typed, never listed: the lock screen shouldn't tell a passer-by who has an account.
+        if (Vault.Usernames().Count == 0) ShowSetup();
+        else UserBox.Focus();
     }
 
     // ---------- Log in ----------
 
     async void Login_Click(object sender, RoutedEventArgs e)
     {
-        var username = UserBox.SelectedItem as string;
-        if (username == null) return;
+        var username = UserBox.Text.Trim().ToLowerInvariant();
+        if (username.Length == 0) { ShowError("Enter your username."); return; }
         if (LoginGuard.LockedFor(username) is { } wait)
         {
             ShowError($"Too many failed attempts. Try again in {Math.Ceiling(wait.TotalMinutes)} minute(s).");
@@ -43,11 +39,15 @@ public partial class LockWindow : Window
         try
         {
             var password = LoginPassword.Password;
-            var contents = await Task.Run(() => Vault.Unlock(username, password));   // Argon2 is slow on purpose
+            // Same message and roughly the same time whether or not the username exists.
+            var exists = File.Exists(Vault.PathFor(username));
+            var contents = exists
+                ? await Task.Run(() => Vault.Unlock(username, password))   // Argon2 is slow on purpose
+                : await Task.Delay(700).ContinueWith(_ => (VaultContents?)null);
             if (contents == null || !TotpHelper.Verify(contents.TotpSecret, LoginCode.Text))
             {
                 LoginGuard.Fail(username);
-                ShowError("Wrong password or code.");
+                ShowError("Wrong username, password or code.");
                 return;
             }
             LoginGuard.Succeed(username);
@@ -144,9 +144,8 @@ public partial class LockWindow : Window
 
             var password = EnrollPassword.Password;
             await Task.Run(() => Vault.Save(new VaultContents(username, token, _pendingSecret), password));
-            MessageBox.Show($"Enrolled as {username}. You can log in now.", "Enrolled");
-            UserBox.ItemsSource = Vault.Usernames();
-            UserBox.SelectedItem = username;
+            MessageBox.Show($"Enrolled. Your username is {username}. Write it down: the lock screen won't list it.", "Enrolled");
+            UserBox.Text = username;
             ShowLogin_Click(sender, e);
         }
         catch (Exception ex) { ShowError(ex.Message); }

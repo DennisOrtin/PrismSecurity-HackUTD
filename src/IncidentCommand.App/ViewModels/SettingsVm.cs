@@ -30,6 +30,19 @@ public partial class SettingsVm : PageVm
     [ObservableProperty] bool autoApproveReadOnly;
     [ObservableProperty] string auditStatus = "";
 
+    // ---- AI provider and models (stored in the database, applied by the agent on its next call) ----
+    public AiProvider[] Providers { get; } = Enum.GetValues<AiProvider>();
+    public AiModel[] Models { get; } = Enum.GetValues<AiModel>();
+    [ObservableProperty] AiProvider aiProvider;
+    [ObservableProperty] AiModel agentModel;
+    [ObservableProperty] AiModel reviewerModel;
+    [ObservableProperty] bool isCloud;
+    bool _loadingAi;
+
+    public string LocalEndpoint => $"{Settings.Current.Ai.Local.BaseUrl}   Nano: {Settings.Current.Ai.Local.NanoModel}   Lightning: {Settings.Current.Ai.Local.LightningModel}";
+    public string CloudEndpoint => $"{Settings.Current.Ai.Cloud.BaseUrl}   Nano: {Settings.Current.Ai.Cloud.NanoModel}   Lightning: {Settings.Current.Ai.Cloud.LightningModel}";
+    public string SettingsFile => Settings.FilePath;
+
     public SettingsVm() => Refresh();
 
     public override void Refresh()
@@ -44,6 +57,12 @@ public partial class SettingsVm : PageVm
         {
             if (string.IsNullOrEmpty(ResponderAddress)) ResponderAddress = c.ResponderAddress;
             AutoApproveReadOnly = c.AutoApproveReadOnly;
+            _loadingAi = true;
+            AiProvider = c.AiProvider;
+            AgentModel = c.AgentModel;
+            ReviewerModel = c.ReviewerModel;
+            IsCloud = c.AiProvider == AiProvider.Cloud;
+            _loadingAi = false;
         }
     }
 
@@ -78,6 +97,26 @@ public partial class SettingsVm : PageVm
     {
         var current = Conn.Db.ConfigView.Iter().Select(c => c.AutoApproveReadOnly).FirstOrDefault();
         if (value != current && Session.IsCommander) Conn.Reducers.SetAutoApproveReadOnly(value);
+    }
+
+    partial void OnAiProviderChanged(AiProvider value) => PushAi();
+    partial void OnAgentModelChanged(AiModel value) => PushAi();
+    partial void OnReviewerModelChanged(AiModel value) => PushAi();
+
+    void PushAi()
+    {
+        if (_loadingAi || Session.Conn == null || !Session.IsCommander) return;
+        foreach (var c in Conn.Db.ConfigView.Iter())
+            if (c.AiProvider == AiProvider && c.AgentModel == AgentModel && c.ReviewerModel == ReviewerModel) return;
+        if (AiProvider == AiProvider.Cloud && !Conn.Db.ConfigView.Iter().Any(c => c.AiProvider == AiProvider.Cloud))
+        {
+            var ok = System.Windows.MessageBox.Show(
+                "Cloud mode sends incident data (logs, scope, actions) to the Brev endpoint over the internet.\n\n" +
+                "Use it only for development and testing. Switch to cloud?",
+                "Send incident data off this laptop?", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Warning);
+            if (ok != System.Windows.MessageBoxResult.Yes) { Refresh(); return; }
+        }
+        Conn.Reducers.SetAiConfig(AiProvider, AgentModel, ReviewerModel);
     }
 
     /// Recompute the hash chain from GENESIS. Same formula as Module.WriteAudit.

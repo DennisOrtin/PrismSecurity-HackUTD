@@ -35,6 +35,9 @@ Rules:
 5. Never target a host that is not in the host list. Never propose disabling security controls.
 6. If the responder only asked a question, use the answer tool and propose nothing.
 7. Be brief and plain. The responder reads your reasoning in seconds.
+8. Use the tools. If you cannot call tools, reply with ONLY one JSON object:
+   {"tool": "submit_plan", "arguments": {"reasoning": "...", "steps": [{"kind": "...", "host": "...", "params": {}, "rationale": "..."}]}}
+   or {"tool": "answer", "arguments": {"text": "..."}}
 """;
 
     public const string ReviewerSystem = """

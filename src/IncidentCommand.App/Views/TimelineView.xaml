@@ -20,6 +20,8 @@
             <ui:Button Content="Write post-incident summary" Command="{Binding RequestSummaryCommand}" IsEnabled="{Binding CanAct}" Margin="0,0,0,8" />
           </WrapPanel>
           <TextBox Text="{Binding EntryText}" AcceptsReturn="True" MinHeight="60" TextWrapping="Wrap" />
+          <TextBlock Style="{StaticResource Muted}" Margin="0,6,0,0"
+                     Text="Picking a phase (Detected … Closed) also moves the incident to that phase. The note is optional then." />
         </StackPanel>
       </Border>
       <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -64,6 +66,10 @@
         <ui:Button DockPanel.Dock="Right" Content="Send" Appearance="Primary" Command="{Binding SendCommand}" IsEnabled="{Binding CanAct}" Margin="8,0,0,0" />
         <TextBox Text="{Binding Prompt, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="60" TextWrapping="Wrap" />
       </DockPanel>
+      <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+        <TextBlock DockPanel.Dock="Left" Text="Answer with" VerticalAlignment="Center" Margin="0,0,8,0" />
+        <ComboBox ItemsSource="{Binding ModelOptions}" SelectedItem="{Binding SelectedModel}" DisplayMemberPath="Label" />
+      </DockPanel>
       <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Muted}" Text="The AI proposes; it can never act. Everything it suggests goes to the Actions screen for a human decision." />
       <ScrollViewer VerticalScrollBarVisibility="Auto">
         <ItemsControl ItemsSource="{Binding Chat}">
@@ -72,7 +78,8 @@
               <StackPanel Margin="0,0,0,12">
                 <TextBlock>
                   <Run Text="{Binding Author, Mode=OneWay}" Foreground="{Binding AuthorBrush, Mode=OneWay}" FontWeight="SemiBold" /> <Run Text="  " />
-                  <Run Text="{Binding When, Mode=OneWay}" Foreground="{StaticResource NeutralBrush}" />
+                  <Run Text="{Binding When, Mode=OneWay}" Foreground="{StaticResource NeutralBrush}" /> <Run Text="  " />
+                  <Run Text="{Binding ModelLabel, Mode=OneWay}" Foreground="{StaticResource NeutralBrush}" FontStyle="Italic" />
                 </TextBlock>
                 <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
               </StackPanel>

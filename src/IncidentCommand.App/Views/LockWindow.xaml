@@ -13,8 +13,8 @@
 
       <!-- Log in -->
       <StackPanel x:Name="LoginPanel">
-        <TextBlock Text="Account" />
-        <ComboBox x:Name="UserBox" Margin="0,4,0,12" />
+        <TextBlock Text="Username" />
+        <TextBox x:Name="UserBox" Margin="0,4,0,12" />
         <TextBlock Text="Password" />
         <PasswordBox x:Name="LoginPassword" Margin="0,4,0,12" />
         <TextBlock Text="6-digit code from your phone" />
@@ -26,7 +26,7 @@
       <!-- First run: create the incident commander -->
       <StackPanel x:Name="SetupPanel" Visibility="Collapsed">
         <TextBlock Text="First run: set up the incident commander" Style="{StaticResource H2}" />
-        <TextBlock Style="{StaticResource Muted}" Text="This laptop has no accounts yet. The first account becomes incident commander and can enroll everyone else, in person." Margin="0,0,0,12" />
+        <TextBlock Style="{StaticResource Muted}" Text="This laptop has no accounts yet. The first account becomes incident commander (username: commander-01) and can enroll everyone else, in person." Margin="0,0,0,12" />
         <TextBlock Text="Your name" />
         <TextBox x:Name="SetupName" Margin="0,4,0,12" />
         <TextBlock Text="Password (12+ characters)" />

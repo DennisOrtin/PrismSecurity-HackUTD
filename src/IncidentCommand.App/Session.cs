@@ -113,7 +113,8 @@ public static class Session
         r.OnApproveAction += (ctx, _, _, _) => Check(ctx, "Approval");
         r.OnDenyAction += (ctx, _, _) => Check(ctx, "Deny");
         r.OnProposeAction += (ctx, _, _, _, _, _) => Check(ctx, "Proposing the action");
-        r.OnSubmitPrompt += (ctx, _, _) => Check(ctx, "Sending to the AI");
+        r.OnSubmitPrompt += (ctx, _, _, _) => Check(ctx, "Sending to the AI");
+        r.OnSetAiConfig += (ctx, _, _, _) => Check(ctx, "Changing the AI settings");
         r.OnOpenIncident += (ctx, _, _) => Check(ctx, "Opening the incident");
         r.OnSetPhase += (ctx, _, _) => Check(ctx, "Changing the phase");
         r.OnSetSummary += (ctx, _, _) => Check(ctx, "Saving the summary");

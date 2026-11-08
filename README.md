@@ -61,6 +61,30 @@ After every module change: `publish.ps1` (add `-Wipe` to reset data) then `gener
 
 In the app, propose Follow logs (auth and app) on `web-01` and `file-01` first, so events stream in.
 
+## AI providers and models
+
+Which provider (Local = LM Studio, Cloud = NVIDIA Brev) and which model each agent uses is stored in the
+database and switched live by the commander in **Settings > AI**. Any single question can also pick a model
+in the Timeline screen ("Answer with"). Cloud mode shows a red warning in the banner: development only.
+
+Where each provider lives and what each model is called there is in
+`%LOCALAPPDATA%\IncidentCommand\settings.json` under `Ai.Local` and `Ai.Cloud` (`BaseUrl`, `ApiKey`,
+`NanoModel`, `LightningModel`). Copy the exact model IDs from LM Studio's server tab and your Brev deployment.
+
+Check both before relying on them: `dist\Agent.exe test` (or `test local` / `test cloud`).
+
+## Inspecting the database
+
+`db.bat` reads every table, including private ones, as the database owner via `spacetime sql`:
+
+| Command | Does |
+| --- | --- |
+| `db.bat` | List tables and row counts |
+| `db.bat all` | Dump everything |
+| `db.bat incident` | Dump one table |
+| `db.bat response_action -Watch` | Re-dump every 2 seconds while you click around the UI |
+| `db.bat -Sql "SELECT * FROM message WHERE incident_id = 1"` | Any query |
+
 ## Not compiled yet: check these in hour 0-2
 
 The skeleton was written against the SpacetimeDB 2.x docs but has not been compiled. The module's

@@ -33,7 +33,7 @@ public partial class ActionsVm : PageVm
         var reviews = Conn.Db.ReviewView.Iter().Where(r => r.TargetKind == "action").ToList();
 
         PlanReasoning = Conn.Db.PlanView.Iter().Where(p => p.IncidentId == id && p.Active)
-            .OrderByDescending(p => p.Id).Select(p => p.Reasoning).FirstOrDefault() ?? "";
+            .OrderByDescending(p => p.Id).Select(p => $"{p.Reasoning}\n\n(planned by {p.ModelLabel})").FirstOrDefault() ?? "";
 
         Pending.Clear();
         foreach (var a in actions.Where(a => a.Status == ActionStatus.Proposed).OrderBy(a => a.PlanId).ThenBy(a => a.StepOrder))

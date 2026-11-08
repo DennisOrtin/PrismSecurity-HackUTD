@@ -66,6 +66,38 @@
         </StackPanel>
       </Border>
 
+      <!-- AI -->
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <TextBlock Text="AI" Style="{StaticResource H2}" />
+          <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,12"
+                     Text="Changes take effect on the agents' next call. Endpoints and model IDs live in the settings file below." />
+          <WrapPanel>
+            <StackPanel Margin="0,0,16,8"><TextBlock Text="Provider" />
+              <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding AiProvider}" Width="160" IsEnabled="{Binding IsCommander}" /></StackPanel>
+            <StackPanel Margin="0,0,16,8"><TextBlock Text="Planning agent model" />
+              <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding AgentModel}" Width="180" IsEnabled="{Binding IsCommander}" /></StackPanel>
+            <StackPanel Margin="0,0,16,8"><TextBlock Text="Reviewer model" />
+              <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding ReviewerModel}" Width="180" IsEnabled="{Binding IsCommander}" /></StackPanel>
+          </WrapPanel>
+          <Border Background="{StaticResource DangerBrush}" Padding="10,8" CornerRadius="4" Margin="0,4,0,8">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="Visibility" Value="Collapsed" />
+                <Style.Triggers><DataTrigger Binding="{Binding IsCloud}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
+              </Style>
+            </Border.Style>
+            <TextBlock Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap"
+                       Text="CLOUD MODE: incident data leaves this laptop. Development and testing only. The final build runs locally." />
+          </Border>
+          <TextBlock Text="Local (LM Studio)" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding LocalEndpoint, Mode=OneWay}" Style="{StaticResource Muted}" FontFamily="Consolas" Margin="0,0,0,8" />
+          <TextBlock Text="Cloud (NVIDIA Brev)" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding CloudEndpoint, Mode=OneWay}" Style="{StaticResource Muted}" FontFamily="Consolas" Margin="0,0,0,8" />
+          <TextBlock Style="{StaticResource Muted}"><Run Text="Settings file: " /><Run Text="{Binding SettingsFile, Mode=OneWay}" /></TextBlock>
+        </StackPanel>
+      </Border>
+
       <!-- Audit -->
       <Border Style="{StaticResource Card}">
         <StackPanel>

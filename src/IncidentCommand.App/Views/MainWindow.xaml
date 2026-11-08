@@ -23,7 +23,10 @@
           <TextBlock Text="{Binding NextStep}" Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis" />
         </StackPanel>
         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-          <TextBlock Text="{Binding UserLine}" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,12,0" />
+          <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+            <TextBlock Text="{Binding UserLine}" Style="{StaticResource Muted}" HorizontalAlignment="Right" />
+            <TextBlock Text="{Binding AiLine}" Foreground="{Binding AiBrush}" FontWeight="SemiBold" HorizontalAlignment="Right" />
+          </StackPanel>
           <ui:Button Content="Lock" Command="{Binding LockNowCommand}" />
         </StackPanel>
       </Grid>

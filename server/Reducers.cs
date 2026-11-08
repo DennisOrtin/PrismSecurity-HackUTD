@@ -9,7 +9,11 @@ public static partial class Module
     [SpacetimeDB.Reducer(ReducerKind.Init)]
     public static void Init(ReducerContext ctx)
     {
-        ctx.Db.Config.Insert(new Config { Id = 0, BootstrapDone = false, AutoApproveReadOnly = false, UserCounter = 0, ResponderAddress = "" });
+        ctx.Db.Config.Insert(new Config
+        {
+            Id = 0, BootstrapDone = false, AutoApproveReadOnly = false, UserCounter = 0, ResponderAddress = "",
+            AiProvider = AiProvider.Local, AgentModel = AiModel.Nano, ReviewerModel = AiModel.Nano,
+        });
         ctx.Db.AuditHead.Insert(new AuditHead { Id = 0, LastHash = "GENESIS", Count = 0 });
     }
 
@@ -115,6 +119,15 @@ public static partial class Module
         WriteAudit(ctx, u.Username, "set_auto_approve_read_only", Payload("enabled", enabled));
     }
 
+    /// Commander switches provider/models live. Cloud sends incident data off this laptop: audited.
+    [SpacetimeDB.Reducer]
+    public static void SetAiConfig(ReducerContext ctx, AiProvider provider, AiModel agentModel, AiModel reviewerModel)
+    {
+        var u = Require(ctx, Role.Commander);
+        ctx.Db.Config.Id.Update(GetConfig(ctx) with { AiProvider = provider, AgentModel = agentModel, ReviewerModel = reviewerModel });
+        WriteAudit(ctx, u.Username, "set_ai_config", Payload("provider", provider, "agent_model", agentModel, "reviewer_model", reviewerModel));
+    }
+
     /// The app records every posture Fix/Undo here so it lands in the audit chain.
     [SpacetimeDB.Reducer]
     public static void RecordPosture(ReducerContext ctx, string checkId, string op, bool ok, string before, string after)
@@ -205,19 +218,23 @@ public static partial class Module
 
     /// Dashboard -> DB. Stores the prompt and the chat message; the agent picks it up by subscription.
     [SpacetimeDB.Reducer]
-    public static void SubmitPrompt(ReducerContext ctx, ulong incidentId, string text)
+    public static void SubmitPrompt(ReducerContext ctx, ulong incidentId, string text, ModelChoice model)
     {
         var u = Require(ctx, Role.Commander, Role.Responder);
         if (ctx.Db.Incident.Id.Find(incidentId) is null) throw new Exception("No such incident.");
-        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = incidentId, Author = u.Username, AuthorKind = AuthorKind.Human, Text = text, At = ctx.Timestamp });
-        ctx.Db.AgentRequest.Insert(new AgentRequest { Id = 0, IncidentId = incidentId, FromUser = u.Username, Text = text, At = ctx.Timestamp, Status = RequestStatus.Pending });
-        WriteAudit(ctx, u.Username, "submit_prompt", Payload("incident", incidentId, "text", text));
+        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = incidentId, Author = u.Username, AuthorKind = AuthorKind.Human, Text = text, At = ctx.Timestamp, ModelLabel = "" });
+        ctx.Db.AgentRequest.Insert(new AgentRequest
+        {
+            Id = 0, IncidentId = incidentId, FromUser = u.Username, Text = text, At = ctx.Timestamp,
+            Status = RequestStatus.Pending, Model = model, Depth = 0,
+        });
+        WriteAudit(ctx, u.Username, "submit_prompt", Payload("incident", incidentId, "text", text, "model", model));
     }
 
     /// Agent -> DB. A plan with ordered steps. Older active plans for the incident are superseded
     /// and their unapproved steps marked Stale.
     [SpacetimeDB.Reducer]
-    public static void SubmitPlan(ReducerContext ctx, ulong requestId, string reasoning, List<PlannedStep> steps)
+    public static void SubmitPlan(ReducerContext ctx, ulong requestId, string reasoning, List<PlannedStep> steps, string modelLabel)
     {
         var u = Require(ctx, Role.Agent);
         var req = ctx.Db.AgentRequest.Id.Find(requestId) ?? throw new Exception("No such request.");
@@ -236,6 +253,7 @@ public static partial class Module
         var plan = ctx.Db.Plan.Insert(new Plan
         {
             Id = 0, IncidentId = req.IncidentId, RequestId = requestId, Reasoning = reasoning, CreatedAt = ctx.Timestamp, Active = true,
+            ModelLabel = modelLabel,
         });
 
         var cfg = GetConfig(ctx);
@@ -255,18 +273,18 @@ public static partial class Module
         }
 
         ctx.Db.AgentRequest.Id.Update(req with { Status = RequestStatus.Planned });
-        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = req.IncidentId, Author = u.Username, AuthorKind = AuthorKind.Assistant, Text = reasoning, At = ctx.Timestamp });
+        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = req.IncidentId, Author = u.Username, AuthorKind = AuthorKind.Assistant, Text = reasoning, At = ctx.Timestamp, ModelLabel = modelLabel });
         WriteAudit(ctx, u.Username, "submit_plan", Payload("plan", plan.Id, "request", requestId, "steps", steps.Count));
     }
 
     /// Agent answers a question without proposing anything (doesn't supersede the active plan).
     [SpacetimeDB.Reducer]
-    public static void AnswerRequest(ReducerContext ctx, ulong requestId, string text)
+    public static void AnswerRequest(ReducerContext ctx, ulong requestId, string text, string modelLabel)
     {
         var u = Require(ctx, Role.Agent);
         var req = ctx.Db.AgentRequest.Id.Find(requestId) ?? throw new Exception("No such request.");
         ctx.Db.AgentRequest.Id.Update(req with { Status = RequestStatus.Planned });
-        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = req.IncidentId, Author = u.Username, AuthorKind = AuthorKind.Assistant, Text = text, At = ctx.Timestamp });
+        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = req.IncidentId, Author = u.Username, AuthorKind = AuthorKind.Assistant, Text = text, At = ctx.Timestamp, ModelLabel = modelLabel });
     }
 
     [SpacetimeDB.Reducer]
@@ -275,7 +293,7 @@ public static partial class Module
         var u = Require(ctx, Role.Agent);
         var req = ctx.Db.AgentRequest.Id.Find(requestId) ?? throw new Exception("No such request.");
         ctx.Db.AgentRequest.Id.Update(req with { Status = RequestStatus.Failed });
-        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = req.IncidentId, Author = u.Username, AuthorKind = AuthorKind.System, Text = $"Agent could not plan: {reason}", At = ctx.Timestamp });
+        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = req.IncidentId, Author = u.Username, AuthorKind = AuthorKind.System, Text = $"Agent could not plan: {reason}", At = ctx.Timestamp, ModelLabel = "" });
     }
 
     /// A human proposes a catalog action directly (outside any plan).
@@ -324,10 +342,10 @@ public static partial class Module
     }
 
     [SpacetimeDB.Reducer]
-    public static void PostAiMessage(ReducerContext ctx, ulong incidentId, string text)
+    public static void PostAiMessage(ReducerContext ctx, ulong incidentId, string text, string modelLabel)
     {
         var u = Require(ctx, Role.Agent, Role.Reviewer);
-        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = incidentId, Author = u.Username, AuthorKind = AuthorKind.Assistant, Text = text, At = ctx.Timestamp });
+        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = incidentId, Author = u.Username, AuthorKind = AuthorKind.Assistant, Text = text, At = ctx.Timestamp, ModelLabel = modelLabel });
     }
 
     /// Reviewer can only ADD warnings. It never blocks or approves.
@@ -405,6 +423,41 @@ public static partial class Module
         AddEntry(ctx, a.IncidentId, u.Username, AuthorKind.System, a.Tier == Tier.ReadOnly ? "Analysis" : "Containment",
                  $"{a.Kind} on {a.Host} {(success ? "succeeded" : "failed")} (approved by {a.ApprovedBy})", true);
         WriteAudit(ctx, u.Username, "finish_action", Payload("id", actionId, "success", success));
+        MaybeFollowUp(ctx, a.PlanId);
+    }
+
+    const byte MaxAutoFollowUps = 4;
+
+    /// Multi-step loop: when the last step of the active plan finishes, wake the agent with the results.
+    /// Capped, so an agent proposing read-only steps can't loop forever with auto-approve on.
+    static void MaybeFollowUp(ReducerContext ctx, ulong planId)
+    {
+        if (planId == 0) return;
+        var plan = ctx.Db.Plan.Id.Find(planId);
+        if (plan is null || !plan.Value.Active) return;
+        bool unfinished = ctx.Db.ResponseAction.PlanId.Filter(planId).Any(x =>
+            x.Status is ActionStatus.Proposed or ActionStatus.Approved or ActionStatus.Running);
+        if (unfinished) return;
+
+        var req = ctx.Db.AgentRequest.Id.Find(plan.Value.RequestId);
+        byte depth = (byte)((req?.Depth ?? 0) + 1);
+        var model = req?.Model ?? ModelChoice.Default;
+        var incidentId = plan.Value.IncidentId;
+        if (depth > MaxAutoFollowUps)
+        {
+            ctx.Db.Message.Insert(new Message
+            {
+                Id = 0, IncidentId = incidentId, Author = "system", AuthorKind = AuthorKind.System, At = ctx.Timestamp, ModelLabel = "",
+                Text = $"The agent has re-planned {MaxAutoFollowUps} times on its own. Ask it to continue when you're ready.",
+            });
+            return;
+        }
+        ctx.Db.AgentRequest.Insert(new AgentRequest
+        {
+            Id = 0, IncidentId = incidentId, FromUser = "system", At = ctx.Timestamp, Status = RequestStatus.Pending,
+            Text = "All steps of your last plan have finished. Review their output and decide the next steps.",
+            Model = model, Depth = depth,
+        });
     }
 
     /// Executor writes pulled network data. High-severity events wake the agent automatically.
@@ -420,7 +473,7 @@ public static partial class Module
             ctx.Db.AgentRequest.Insert(new AgentRequest
             {
                 Id = 0, IncidentId = incidentId, FromUser = "system", Text = $"New severity-{severity} event on {host} ({source}). Re-assess.",
-                At = ctx.Timestamp, Status = RequestStatus.Pending,
+                At = ctx.Timestamp, Status = RequestStatus.Pending, Model = ModelChoice.Default, Depth = 0,
             });
     }
 

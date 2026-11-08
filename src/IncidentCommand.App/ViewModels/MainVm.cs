@@ -1,6 +1,7 @@
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using IncidentCommand.Client;
 using SpacetimeDB.Types;
 
 namespace IncidentCommand.App.ViewModels;
@@ -15,6 +16,8 @@ public partial class MainVm : PageVm
     [ObservableProperty] string userLine = "";
     [ObservableProperty] string errorText = "";
     [ObservableProperty] string actionsHeader = "Actions";
+    [ObservableProperty] string aiLine = "";
+    [ObservableProperty] Brush aiBrush = Neutral;
 
     public OverviewVm Overview { get; } = new();
     public ActionsVm Actions { get; } = new();
@@ -55,6 +58,13 @@ public partial class MainVm : PageVm
             .Where(m => m.IncidentId == id && m.AuthorKind == AuthorKind.Assistant)
             .OrderByDescending(m => m.Id).Select(m => m.Text).FirstOrDefault();
         NextStep = lastAi == null ? "" : "AI recommends: " + (lastAi.Length > 220 ? lastAi[..220] + "…" : lastAi);
+
+        foreach (var c in Conn.Db.ConfigView.Iter())
+        {
+            bool cloud = c.AiProvider == AiProvider.Cloud;
+            AiLine = cloud ? $"AI: {AiNames.Model(c.AgentModel)} · CLOUD (data leaves this laptop)" : $"AI: {AiNames.Model(c.AgentModel)} · local";
+            AiBrush = cloud ? Danger : Neutral;
+        }
 
         var pending = Conn.Db.ActionView.Iter().Count(a => a.IncidentId == id && a.Status == ActionStatus.Proposed);
         ActionsHeader = pending > 0 ? $"Actions ({pending} waiting)" : "Actions";

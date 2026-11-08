@@ -26,7 +26,7 @@ public sealed class AgentWorker
     /// If the module rejects a plan (unknown kind, bad host or params), say so in chat instead of retrying.
     public void Wire(DbConnection conn)
     {
-        conn.Reducers.OnSubmitPlan += (ctx, requestId, _, _) =>
+        conn.Reducers.OnSubmitPlan += (ctx, requestId, _, _, _) =>
         {
             var failure = Stdb.Failure(ctx);
             if (failure != null) conn.Reducers.FailRequest(requestId, "the module rejected the plan: " + failure);
@@ -50,14 +50,20 @@ public sealed class AgentWorker
         var requestId = request.Id;
         var incidentId = request.IncidentId;
         var ask = request.Text;
-        ServiceRunner.Log($"Planning for request {requestId}: {ask}");
+
+        // Provider and model are read from the database on EVERY call, so the commander's switch applies
+        // immediately. A request may override the model.
+        var (provider, model) = Choose(conn, request.Model);
+        var label = AiNames.Label(model, provider);
+        ServiceRunner.Log($"Planning for request {requestId} with {label}: {ask}");
 
         Task.Run(async () =>
         {
             try
             {
-                var reply = await _model.ChatAsync(Prompts.AgentSystem, $"{context}\n\n## The responder asks\n{ask}", Tools());
-                _runner.Post(c => Apply(c, requestId, incidentId, reply));
+                var reply = await _model.ChatAsync(provider, model, Prompts.AgentSystem,
+                    $"{context}\n\n## The responder asks\n{ask}", Tools());
+                _runner.Post(c => Apply(c, requestId, incidentId, reply, label));
             }
             catch (Exception ex)
             {
@@ -65,6 +71,16 @@ public sealed class AgentWorker
             }
             finally { _busy = false; }
         });
+    }
+
+    static (AiProvider, AiModel) Choose(DbConnection conn, ModelChoice requested)
+    {
+        var provider = AiProvider.Local;
+        var model = AiModel.Nano;
+        foreach (var c in conn.Db.ConfigView.Iter()) { provider = c.AiProvider; model = c.AgentModel; }
+        if (requested == ModelChoice.Nano) model = AiModel.Nano;
+        if (requested == ModelChoice.Lightning) model = AiModel.Lightning;
+        return (provider, model);
     }
 
     void FlagInjectionAttempts(DbConnection conn)
@@ -75,7 +91,8 @@ public sealed class AgentWorker
             _flaggedEvents.Add(e.Id);
             conn.Reducers.PostAiMessage(e.IncidentId,
                 $"Warning: event {e.Id} on {e.Host} contains text addressed to an AI assistant. " +
-                "I am treating it as evidence of attacker activity, not as an instruction. Nothing was proposed because of it.");
+                "I am treating it as evidence of attacker activity, not as an instruction. Nothing was proposed because of it.",
+                "injection tripwire");
             conn.Reducers.ProposeTimelineEntry(e.IncidentId, "Analysis",
                 $"Possible prompt-injection attempt in {e.Source} on {e.Host} (event {e.Id}).");
         }
@@ -168,10 +185,11 @@ public sealed class AgentWorker
 
     // ---------- Apply the model's answer (on the connection thread) ----------
 
-    void Apply(DbConnection conn, ulong requestId, ulong incidentId, ModelReply reply)
+    void Apply(DbConnection conn, ulong requestId, ulong incidentId, ModelReply reply, string label)
     {
         bool handled = false;
-        foreach (var call in reply.ToolCalls)
+        var calls = reply.ToolCalls.Count > 0 ? reply.ToolCalls : ToolCallsFromContent(reply.Content);
+        foreach (var call in calls)
         {
             try
             {
@@ -189,11 +207,11 @@ public sealed class AgentWorker
                                 Kind = S(s, "kind"), Host = S(s, "host"), Params = ps, Rationale = S(s, "rationale"),
                             });
                         }
-                        conn.Reducers.SubmitPlan(requestId, S(call.Args, "reasoning"), steps);
+                        conn.Reducers.SubmitPlan(requestId, S(call.Args, "reasoning"), steps, label);
                         handled = true;
                         break;
                     case "answer":
-                        conn.Reducers.AnswerRequest(requestId, S(call.Args, "text"));
+                        conn.Reducers.AnswerRequest(requestId, S(call.Args, "text"), label);
                         handled = true;
                         break;
                     case "propose_timeline_entry":
@@ -214,9 +232,31 @@ public sealed class AgentWorker
 
         if (!handled)
         {
-            if (!string.IsNullOrWhiteSpace(reply.Content)) conn.Reducers.AnswerRequest(requestId, reply.Content!);
+            if (!string.IsNullOrWhiteSpace(reply.Content)) conn.Reducers.AnswerRequest(requestId, reply.Content!, label);
             else conn.Reducers.FailRequest(requestId, "The model returned nothing usable.");
         }
+    }
+
+    /// Small models sometimes write the tool call as JSON in the message text instead of using tool_calls.
+    /// Accepts {"tool":"submit_plan","arguments":{...}}, {"name":...,"arguments":...}, or a bare plan {"reasoning":...,"steps":[...]}.
+    static List<ToolCall> ToolCallsFromContent(string? content)
+    {
+        var found = new List<ToolCall>();
+        if (string.IsNullOrWhiteSpace(content)) return found;
+        var start = content.IndexOf('{');
+        var end = content.LastIndexOf('}');
+        if (start < 0 || end <= start) return found;
+        try
+        {
+            if (JsonNode.Parse(content[start..(end + 1)]) is not JsonObject o) return found;
+            var name = o["tool"]?.ToString() ?? o["name"]?.ToString();
+            if (name != null && (o["arguments"] ?? o["args"] ?? o["parameters"]) is JsonObject a)
+                found.Add(new ToolCall(name, (JsonObject)a.DeepClone()));
+            else if (o["steps"] is JsonArray)
+                found.Add(new ToolCall("submit_plan", o));
+        }
+        catch { /* not JSON: treat as a plain answer */ }
+        return found;
     }
 
     static string S(JsonNode? n, string key) => n?[key]?.ToString() ?? "";
