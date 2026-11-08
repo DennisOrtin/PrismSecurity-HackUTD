@@ -44,18 +44,31 @@ After every module change: `publish.ps1` (add `-Wipe` to reset data) then `gener
 - [ ] Overview: open an incident. The banner shows it, Timeline shows "Incident opened by commander-01".
 - [ ] Settings: Verify the chain says "Chain intact".
 
-## Services (agent, reviewer, executor)
+## Services: three local AI agents and the executor
 
-They are built in and need no setup. `run-full.bat` (or `start-services.bat`) starts all three; each waits
-until the incident commander logs in to the app, which creates their identities automatically and hands
-each one a DPAPI-protected token. They reconnect on their own if the database restarts or a token is replaced.
+| Service | Job | Can |
+| --- | --- | --- |
+| Response agent (`Agent.exe agent`) | Chats with the responder and proposes actions | Propose plans, answer, suggest shell commands |
+| Reviewer (`Agent.exe reviewer`) | Checks every proposed action and suggested command before a human can send it, for danger and prompt injection | Attach warnings only; never blocks |
+| Parser (`Agent.exe parser`) | Reads everything (events, chat, timeline, action and terminal output) and keeps the structured record current | Write the AI summary and classification, indicators, scope proposals, timeline drafts |
+| Executor (`Executor.exe`) | Runs approved catalog actions and human terminal commands over SSH | The only process with network access and SSH keys |
 
-The commander can switch any of them off in **Settings > Built-in services**. A switched-off service keeps
-running but its identity is inactive, so the database refuses everything it tries and shows it no data.
-"Replace service identities" revokes and recreates all three (use it if a token may have leaked).
+All AI runs locally in LM Studio. Each agent has its own model, chosen by the commander in **Settings > AI** and
+applied on the next call; one question can also override the agent's model in the Timeline ("Answer with").
+Defaults: agent = Nemotron 3.5 Bolt E4B, reviewer and parser = Qwen3 4B Instruct 2507 (one loaded copy serves both).
+The models offered come from `Ai.Models` in `%LOCALAPPDATA%\IncidentCommand\settings.json`; each `Id` must match
+LM Studio exactly. `dist\Agent.exe test` lists what LM Studio has loaded and times a reply from every configured model.
+In LM Studio, turn reasoning/thinking off where a model offers it, so each answer takes seconds.
 
-For the executor, `scripts\setup-keys.ps1` creates the break-glass SSH key; copy the printed public key to the
-sim laptop. Manual enrollment (`Agent.exe enroll agent CODE`) still works as a fallback but isn't needed.
+They need no setup. `run-full.bat` (or `start-services.bat`) starts all four; each waits until the incident
+commander logs in, which creates their identities automatically. The commander can switch any of them off in
+**Settings > Built-in services**: the identity becomes inactive, so the database refuses everything it tries.
+
+**Actions need registered hosts.** The AI never has credentials; only the executor does, and only for hosts listed
+under **Settings > Hosts** (name, address, port, pinned SSH fingerprint from `sim\fingerprints.ps1`). With no hosts
+registered, the agent can only answer questions.
+
+For the executor, `scripts\setup-keys.ps1` creates the break-glass SSH key; copy the printed public key to the sim laptop.
 
 ## Sim laptop (Windows 11, Docker Desktop with WSL2)
 
@@ -66,18 +79,6 @@ sim laptop. Manual enrollment (`Agent.exe enroll agent CODE`) still works as a f
 4. `sim\attack.ps1 -Fast` for rehearsal, `sim\attack.ps1` for the demo. `reset.ps1` between runs.
 
 In the app, propose Follow logs (auth and app) on `web-01` and `file-01` first, so events stream in.
-
-## AI providers and models
-
-Which provider (Local = LM Studio, Cloud = NVIDIA Brev) and which model each agent uses is stored in the
-database and switched live by the commander in **Settings > AI**. Any single question can also pick a model
-in the Timeline screen ("Answer with"). Cloud mode shows a red warning in the banner: development only.
-
-Where each provider lives and what each model is called there is in
-`%LOCALAPPDATA%\IncidentCommand\settings.json` under `Ai.Local` and `Ai.Cloud` (`BaseUrl`, `ApiKey`,
-`NanoModel`, `LightningModel`). Copy the exact model IDs from LM Studio's server tab and your Brev deployment.
-
-Check both before relying on them: `dist\Agent.exe test` (or `test local` / `test cloud`).
 
 ## Inspecting the database
 

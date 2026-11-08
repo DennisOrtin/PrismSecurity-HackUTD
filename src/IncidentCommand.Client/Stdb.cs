@@ -43,6 +43,8 @@ public static class Stdb
             .AddQuery(q => q.From.MessageView())
             .AddQuery(q => q.From.TerminalCommandView())
             .AddQuery(q => q.From.TerminalOutputView())
+            .AddQuery(q => q.From.IndicatorView())
+            .AddQuery(q => q.From.ParserCursorView())
             .AddQuery(q => q.From.AuditView())
             .Subscribe();
 
@@ -68,6 +70,8 @@ public static class Stdb
         db.TerminalCommandView.OnInsert += (_, _) => changed(); db.TerminalCommandView.OnDelete += (_, _) => changed();
         db.TerminalOutputView.OnInsert += (_, _) => changed(); db.TerminalOutputView.OnDelete += (_, _) => changed();
         db.AuditView.OnInsert += (_, _) => changed(); db.AuditView.OnDelete += (_, _) => changed();
+        db.IndicatorView.OnInsert += (_, _) => changed(); db.IndicatorView.OnDelete += (_, _) => changed();
+        db.ParserCursorView.OnInsert += (_, _) => changed(); db.ParserCursorView.OnDelete += (_, _) => changed();
     }
 
     /// null = committed; otherwise a human-readable reason.

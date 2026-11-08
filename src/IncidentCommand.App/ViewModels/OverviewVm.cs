@@ -9,8 +9,16 @@ namespace IncidentCommand.App.ViewModels;
 public sealed record AssetRow(ulong Id, string Host, string DataClass, string Scope, string Status, Brush StatusBrush,
                               string Evidence, string UpdatedBy, bool FromAi);
 
+public sealed record IndicatorRow(string Kind, string Value, string Context, string Confidence, Brush ConfidenceBrush,
+                                  string Sources, string LastSeen);
+
 public partial class OverviewVm : PageVm
 {
+    public ObservableCollection<IndicatorRow> Indicators { get; } = new();
+    [ObservableProperty] string aiSummary = "";
+    [ObservableProperty] string classification = "";
+    [ObservableProperty] string aiUpdated = "";
+
     public ObservableCollection<AssetRow> Scope { get; } = new();
     public ObservableCollection<AssetRow> ProposedScope { get; } = new();
 
@@ -50,7 +58,20 @@ public partial class OverviewVm : PageVm
                                    StatusWord(a.Status), StatusBrush(a.Status), a.Evidence, a.UpdatedBy, !a.Accepted);
             (a.Accepted ? Scope : ProposedScope).Add(row);
         }
-        foreach (var i in Conn.Db.IncidentView.Iter().Where(i => i.Id == id)) Summary = i.Summary;
+        foreach (var i in Conn.Db.IncidentView.Iter().Where(i => i.Id == id))
+        {
+            Summary = i.Summary;
+            AiSummary = string.IsNullOrWhiteSpace(i.AiSummary) ? "The parser hasn't written a summary yet. It updates as events, chat and actions come in." : i.AiSummary;
+            Classification = string.IsNullOrWhiteSpace(i.Classification) ? "Not classified yet" : i.Classification;
+            AiUpdated = string.IsNullOrWhiteSpace(i.AiSummary) ? "" : $"updated {IncidentCommand.Client.Stdb.Ago(i.AiUpdatedAt)}";
+        }
+
+        Indicators.Clear();
+        foreach (var x in Conn.Db.IndicatorView.Iter().Where(x => x.IncidentId == id)
+                     .OrderByDescending(x => x.Confidence).ThenByDescending(x => x.LastSeen.MicrosecondsSinceUnixEpoch))
+            Indicators.Add(new IndicatorRow(Words(x.Kind.ToString()), x.Value, x.Context, x.Confidence.ToString().ToUpperInvariant(),
+                x.Confidence switch { Confidence.High => Danger, Confidence.Medium => Warning, _ => Neutral },
+                x.Sources, IncidentCommand.Client.Stdb.Ago(x.LastSeen)));
     }
 
     static string Words(string pascal) => string.Concat(pascal.Select((c, i) => i > 0 && char.IsUpper(c) ? " " + char.ToLower(c) : c.ToString()));

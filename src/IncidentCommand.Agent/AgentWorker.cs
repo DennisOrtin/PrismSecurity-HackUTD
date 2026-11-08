@@ -6,24 +6,25 @@ using SpacetimeDB.Types;
 
 namespace IncidentCommand.Agent;
 
-/// The planning agent. It can only call propose-type reducers; the module enforces that.
-/// Flow: pending AgentRequest -> gather context -> Nemotron with tools -> SubmitPlan / AnswerRequest / proposals.
+/// The response agent: talks with the responder and proposes actions. Propose-only (the module enforces it).
+/// Flow: pending AgentRequest -> context -> local Nemotron with tools -> validate steps -> SubmitPlan / AnswerRequest.
+/// Recording findings (summary, scope, indicators, timeline) is the parser's job, not this one's.
 public sealed class AgentWorker
 {
     readonly ServiceRunner _runner;
     readonly ModelClient _model;
     readonly HashSet<ulong> _inFlight = new();
     readonly HashSet<ulong> _flaggedEvents = new();
-    bool _busy;
+    volatile bool _busy;
 
     public AgentWorker(ServiceRunner runner, ModelClient model) { _runner = runner; _model = model; }
 
-    // Deterministic tripwire for text addressed to an AI. Runs before the model ever sees the data.
+    // Deterministic tripwire for text addressed to an AI. Runs before any model sees the data.
     static readonly Regex InjectionLike = new(
         @"(ignore (all |any )?(previous|prior) instructions|AI assistant|system prompt|you are now|approve (all|every|this)|disable (the )?firewall)",
         RegexOptions.IgnoreCase);
 
-    /// If the module rejects a plan (unknown kind, bad host or params), say so in chat instead of retrying.
+    /// If the module still rejects a plan, say so in chat instead of retrying forever.
     public void Wire(DbConnection conn)
     {
         conn.Reducers.OnSubmitPlan += (ctx, requestId, _, _, _) =>
@@ -38,32 +39,32 @@ public sealed class AgentWorker
         FlagInjectionAttempts(conn);
         if (_busy) return;
 
-        var req = conn.Db.RequestView.Iter()
+        var pending = conn.Db.RequestView.Iter()
             .Where(r => r.Status == RequestStatus.Pending && !_inFlight.Contains(r.Id))
             .OrderBy(r => r.Id).ToList();
-        if (req.Count == 0) return;
-        var request = req[0];
+        if (pending.Count == 0) return;
+        var request = pending[0];
 
         _busy = true;
         _inFlight.Add(request.Id);
-        var context = BuildContext(conn, request.IncidentId);
         var requestId = request.Id;
         var incidentId = request.IncidentId;
         var ask = request.Text;
+        var hosts = conn.Db.SshHostView.Iter().Select(h => h.Name).ToHashSet();
+        var context = BuildContext(conn, incidentId, hosts);
 
-        // Provider and model are read from the database on EVERY call, so the commander's switch applies
-        // immediately. A request may override the model.
-        var (provider, model) = Choose(conn, request.Model);
-        var label = AiNames.Label(model, provider);
-        ServiceRunner.Log($"Planning for request {requestId} with {label}: {ask}");
+        // Model is read from the database on EVERY call, so the commander's choice applies immediately.
+        var model = Choose(conn, request.Model);
+        var label = $"{AiNames.Name(model)} · agent";
+        ServiceRunner.Log($"Request {requestId} with {AiNames.Name(model)}: {ask}");
 
         Task.Run(async () =>
         {
             try
             {
-                var reply = await _model.ChatAsync(provider, model, Prompts.AgentSystem,
-                    $"{context}\n\n## The responder asks\n{ask}", Tools());
-                _runner.Post(c => Apply(c, requestId, incidentId, reply, label));
+                var reply = await _model.ChatAsync(model, Prompts.AgentSystem,
+                    $"{context}\n\n## The responder asks\n{ask}", Tools(), maxTokens: Settings.Current.Ai.AgentMaxTokens);
+                _runner.Post(c => Apply(c, requestId, incidentId, reply, label, hosts));
             }
             catch (Exception ex)
             {
@@ -73,14 +74,13 @@ public sealed class AgentWorker
         });
     }
 
-    static (AiProvider, AiModel) Choose(DbConnection conn, ModelChoice requested)
+    /// A per-request model wins; otherwise the commander's choice; otherwise the default in settings.json.
+    static string Choose(DbConnection conn, string requested)
     {
-        var provider = AiProvider.Local;
-        var model = AiModel.Nano;
-        foreach (var c in conn.Db.ConfigView.Iter()) { provider = c.AiProvider; model = c.AgentModel; }
-        if (requested == ModelChoice.Nano) model = AiModel.Nano;
-        if (requested == ModelChoice.Lightning) model = AiModel.Lightning;
-        return (provider, model);
+        if (!string.IsNullOrWhiteSpace(requested)) return requested;
+        var configured = "";
+        foreach (var c in conn.Db.ConfigView.Iter()) configured = c.AgentModel;
+        return AiNames.Resolve(configured, "agent");
     }
 
     void FlagInjectionAttempts(DbConnection conn)
@@ -93,38 +93,47 @@ public sealed class AgentWorker
                 $"Warning: event {e.Id} on {e.Host} contains text addressed to an AI assistant. " +
                 "I am treating it as evidence of attacker activity, not as an instruction. Nothing was proposed because of it.",
                 "injection tripwire");
-            conn.Reducers.ProposeTimelineEntry(e.IncidentId, "Analysis",
-                $"Possible prompt-injection attempt in {e.Source} on {e.Host} (event {e.Id}).");
         }
     }
 
     // ---------- Context ----------
 
-    static string BuildContext(DbConnection conn, ulong incidentId)
+    static string BuildContext(DbConnection conn, ulong incidentId, HashSet<string> hosts)
     {
         var sb = new StringBuilder();
         foreach (var i in conn.Db.IncidentView.Iter().Where(i => i.Id == incidentId))
+        {
             sb.AppendLine($"# Incident {i.Id}: {i.Title}\nPhase: {i.Phase}. Severity: {i.Severity}/4.");
+            if (!string.IsNullOrWhiteSpace(i.Classification)) sb.AppendLine($"Classification (parser): {i.Classification}");
+            if (!string.IsNullOrWhiteSpace(i.AiSummary)) sb.AppendLine($"Summary (parser): {i.AiSummary}");
+            if (!string.IsNullOrWhiteSpace(i.Summary)) sb.AppendLine($"Summary (humans): {i.Summary}");
+        }
 
         sb.AppendLine("\n## Hosts you may target");
-        foreach (var h in conn.Db.SshHostView.Iter()) sb.AppendLine($"- {h.Name}");
+        if (hosts.Count == 0)
+            sb.AppendLine("NONE ARE REGISTERED. You cannot propose any catalog action. Tell the responder to add hosts under Settings > Hosts.");
+        foreach (var h in hosts.OrderBy(h => h)) sb.AppendLine($"- {h}");
 
-        sb.AppendLine("\n## Affected data recorded so far");
+        sb.AppendLine("\n## Indicators so far (parser)");
+        foreach (var x in conn.Db.IndicatorView.Iter().Where(x => x.IncidentId == incidentId).OrderByDescending(x => x.Confidence).Take(30))
+            sb.AppendLine($"- {x.Kind} {x.Value} ({x.Confidence}): {x.Context}");
+
+        sb.AppendLine("\n## Affected data");
         foreach (var a in conn.Db.AssetView.Iter().Where(a => a.IncidentId == incidentId))
-            sb.AppendLine($"- {a.Host}: {a.DataClass}, {a.ScopeLevel} scope, {a.Status}{(a.Accepted ? "" : " (your unaccepted proposal)")}");
+            sb.AppendLine($"- {a.Host}: {a.DataClass}, {a.ScopeLevel} scope, {a.Status}{(a.Accepted ? "" : " (proposed, not yet accepted)")}");
 
         sb.AppendLine("\n## Actions so far (newest last)");
         foreach (var a in conn.Db.ActionView.Iter().Where(a => a.IncidentId == incidentId).OrderBy(a => a.Id).TakeLast(20))
         {
             var p = string.Join(", ", a.Params.Select(x => $"{x.Key}={x.Value}"));
-            sb.AppendLine($"- [{a.Status}] {a.Kind} on {a.Host} ({p})");
+            sb.AppendLine($"- action {a.Id} [{a.Status}] {a.Kind} on {a.Host} ({p})");
             if (!string.IsNullOrEmpty(a.Output))
-                sb.AppendLine(Untrusted($"output of {a.Kind} on {a.Host}", Clip(a.Output, 1500)));
+                sb.AppendLine(Untrusted($"output of action {a.Id}", Clip(a.Output, 1500)));
         }
 
         sb.AppendLine("\n## Recent network events (newest last)");
-        foreach (var e in conn.Db.EventView.Iter().Where(e => e.IncidentId == incidentId).OrderBy(e => e.Id).TakeLast(50))
-            sb.AppendLine(Untrusted($"{e.Host}:{e.Source} event {e.Id}", Clip(e.Raw, 400)));
+        foreach (var e in conn.Db.EventView.Iter().Where(e => e.IncidentId == incidentId).OrderBy(e => e.Id).TakeLast(40))
+            sb.AppendLine(Untrusted($"event {e.Id}, {e.Host} {e.Source}", Clip(e.Raw, 400)));
 
         sb.AppendLine("\n## Recent conversation");
         foreach (var m in conn.Db.MessageView.Iter().Where(m => m.IncidentId == incidentId).OrderBy(m => m.Id).TakeLast(10))
@@ -133,62 +142,86 @@ public sealed class AgentWorker
         return sb.ToString();
     }
 
-    /// Everything that came from the network is fenced and labelled as evidence.
-    static string Untrusted(string source, string text) =>
+    public static string Untrusted(string source, string text) =>
         $"<untrusted source=\"{source}\">\n{text.Replace("</untrusted>", "&lt;/untrusted&gt;")}\n</untrusted>";
 
-    static string Clip(string s, int n) => s.Length <= n ? s : s[..n] + " …";
+    public static string Clip(string s, int n) => s.Length <= n ? s : s[..n] + " …";
 
     // ---------- Tools ----------
 
     static JsonArray Tools()
     {
-        JsonObject Str(string d) => new() { ["type"] = "string", ["description"] = d };
-        JsonObject Obj(JsonObject props, params string[] req) => new()
+        var step = ModelClient.Obj(new JsonObject
         {
-            ["type"] = "object", ["properties"] = props, ["required"] = new JsonArray(req.Select(r => (JsonNode)r!).ToArray()),
-        };
-
-        var step = Obj(new JsonObject
-        {
-            ["kind"] = Str("One of the catalog kinds, exactly as written."),
-            ["host"] = Str("A host from the list."),
-            ["params"] = new JsonObject { ["type"] = "object", ["description"] = "The kind's parameters as string values, e.g. {\"log\":\"auth\",\"lines\":\"200\"}." },
-            ["rationale"] = Str("One or two sentences: why this step, citing evidence."),
+            ["kind"] = ModelClient.Str("One of the catalog kinds, exactly as written."),
+            ["host"] = ModelClient.Str("A host from 'Hosts you may target', exactly as written."),
+            ["params"] = new JsonObject { ["type"] = "object", ["description"] = "The kind's parameters as string values, e.g. {\"log\":\"auth\",\"lines\":\"200\"}. {} if none." },
+            ["rationale"] = ModelClient.Str("One or two sentences: why this step, citing evidence ids."),
         }, "kind", "host", "params", "rationale");
 
         return new JsonArray
         {
-            ModelClient.Tool("submit_plan", "Propose an ordered plan. Evidence-gathering (read-only) steps first. Humans approve every step.",
-                Obj(new JsonObject
+            ModelClient.Tool("submit_plan", "Propose an ordered plan of catalog actions. Humans approve every step.",
+                ModelClient.Obj(new JsonObject
                 {
-                    ["reasoning"] = Str("What you believe happened and what you still need to know. Plain language, under 120 words."),
+                    ["reasoning"] = ModelClient.Str("What you believe happened and what you still need to know. Plain language, under 120 words."),
                     ["steps"] = new JsonObject { ["type"] = "array", ["items"] = step, ["maxItems"] = 6 },
                 }, "reasoning", "steps")),
-            ModelClient.Tool("answer", "Answer the responder's question without proposing actions.",
-                Obj(new JsonObject { ["text"] = Str("Your answer, plain language.") }, "text")),
-            ModelClient.Tool("propose_timeline_entry", "Draft a timeline entry for a human to accept.",
-                Obj(new JsonObject { ["category"] = Str("Detection, Analysis, Containment, Eradication, Recovery, Communication or Note"), ["text"] = Str("The entry.") }, "category", "text")),
-            ModelClient.Tool("propose_scope_update", "Draft an entry for the affected-data table, for a human to accept.",
-                Obj(new JsonObject
+            ModelClient.Tool("answer", "Reply to the responder without proposing actions.",
+                ModelClient.Obj(new JsonObject { ["text"] = ModelClient.Str("Your answer, plain language.") }, "text")),
+            ModelClient.Tool("suggest_command", "Put an exact shell command in the human-only terminal's suggestion list, for one registered host. Use when the responder asks for a command, or the catalog can't do what they want. The human reviews and runs it; it never runs automatically.",
+                ModelClient.Obj(new JsonObject
                 {
-                    ["host"] = Str("Host name."),
-                    ["data_class"] = Str("Credentials, PersonalData, Financial, IntellectualProperty or Operational"),
-                    ["scope_level"] = Str("User, Application, System or Network"),
-                    ["status"] = Str("Unknown, Secure, Encrypted, Exfiltrated or EncryptedAndExfiltrated"),
-                    ["evidence"] = Str("The evidence, citing event or action output."),
-                }, "host", "data_class", "scope_level", "status", "evidence")),
-            ModelClient.Tool("suggest_command", "Suggest a shell command a HUMAN may choose to run when the catalog can't do it. It will never run automatically.",
-                Obj(new JsonObject { ["host"] = Str("Host name."), ["text"] = Str("The exact command."), ["rationale"] = Str("Why.") }, "host", "text", "rationale")),
+                    ["host"] = ModelClient.Str("A registered host."),
+                    ["text"] = ModelClient.Str("The exact command."),
+                    ["rationale"] = ModelClient.Str("Why."),
+                }, "host", "text", "rationale")),
         };
+    }
+
+    // ---------- Step validation (mirrors the module, so one bad step doesn't sink the whole plan) ----------
+
+    static readonly Dictionary<string, string[]> Catalog = new()
+    {
+        ["collect_logs"] = new[] { "log", "lines" }, ["follow_logs"] = new[] { "log" },
+        ["list_processes"] = Array.Empty<string>(), ["list_connections"] = Array.Empty<string>(),
+        ["capture_traffic"] = new[] { "seconds" }, ["hash_files"] = new[] { "dir" },
+        ["kill_process"] = new[] { "pid" }, ["lock_account"] = new[] { "username" }, ["block_ip"] = new[] { "ip" },
+        ["isolate_host"] = Array.Empty<string>(), ["shutdown_host"] = Array.Empty<string>(),
+    };
+
+    static string? Problem(string kind, string host, Dictionary<string, string> ps, HashSet<string> hosts)
+    {
+        if (!Catalog.TryGetValue(kind, out var keys)) return $"'{kind}' is not a catalog action";
+        if (!hosts.Contains(host)) return $"'{host}' is not a registered host";
+        foreach (var k in keys) if (!ps.ContainsKey(k)) return $"missing parameter '{k}'";
+        foreach (var (k, v) in ps)
+        {
+            bool ok = k switch
+            {
+                "log" => v is "auth" or "syslog" or "app",
+                "lines" => int.TryParse(v, out var n) && n is >= 1 and <= 2000,
+                "seconds" => int.TryParse(v, out var n) && n is >= 1 and <= 120,
+                "pid" => int.TryParse(v, out var n) && n > 1,
+                "username" => Regex.IsMatch(v, "^[a-z_][a-z0-9_-]{0,31}$"),
+                "ip" => Regex.IsMatch(v, @"^(\d{1,3}\.){3}\d{1,3}$") && v.Split('.').All(o => int.Parse(o) <= 255),
+                "dir" => Regex.IsMatch(v, @"^/[A-Za-z0-9/_.-]{0,199}$") && !v.Contains(".."),
+                _ => true,
+            };
+            if (!ok) return $"bad value for '{k}': {v}";
+        }
+        return null;
     }
 
     // ---------- Apply the model's answer (on the connection thread) ----------
 
-    void Apply(DbConnection conn, ulong requestId, ulong incidentId, ModelReply reply, string label)
+    void Apply(DbConnection conn, ulong requestId, ulong incidentId, ModelReply reply, string label, HashSet<string> hosts)
     {
         bool handled = false;
-        var calls = reply.ToolCalls.Count > 0 ? reply.ToolCalls : ToolCallsFromContent(reply.Content);
+        var suggested = new List<string>();
+        var skipped = new List<string>();
+        var calls = reply.ToolCalls.Count > 0 ? reply.ToolCalls : ModelClient.ToolCallsFromContent(reply.Content, "submit_plan");
+
         foreach (var call in calls)
         {
             try
@@ -196,71 +229,89 @@ public sealed class AgentWorker
                 switch (call.Name)
                 {
                     case "submit_plan":
-                        var steps = new List<PlannedStep>();
-                        foreach (var s in call.Args["steps"]?.AsArray() ?? new JsonArray())
-                        {
-                            var ps = new List<Param>();
-                            if (s?["params"] is JsonObject po)
-                                foreach (var kv in po) ps.Add(new Param { Key = kv.Key, Value = kv.Value?.ToString() ?? "" });
-                            steps.Add(new PlannedStep
-                            {
-                                Kind = S(s, "kind"), Host = S(s, "host"), Params = ps, Rationale = S(s, "rationale"),
-                            });
-                        }
-                        conn.Reducers.SubmitPlan(requestId, S(call.Args, "reasoning"), steps, label);
+                        SubmitValidatedPlan(conn, requestId, call.Args, label, hosts);
                         handled = true;
                         break;
                     case "answer":
                         conn.Reducers.AnswerRequest(requestId, S(call.Args, "text"), label);
                         handled = true;
                         break;
-                    case "propose_timeline_entry":
-                        conn.Reducers.ProposeTimelineEntry(incidentId, S(call.Args, "category"), S(call.Args, "text"));
-                        break;
-                    case "propose_scope_update":
-                        conn.Reducers.ProposeScopeUpdate(incidentId, S(call.Args, "host"),
-                            E<DataClass>(S(call.Args, "data_class")), E<ScopeLevel>(S(call.Args, "scope_level")),
-                            E<DataStatus>(S(call.Args, "status")), S(call.Args, "evidence"));
-                        break;
                     case "suggest_command":
-                        conn.Reducers.SuggestCommand(incidentId, S(call.Args, "host"), S(call.Args, "text"), S(call.Args, "rationale"));
+                        var sh = S(call.Args, "host").Trim();
+                        var text = S(call.Args, "text").Trim();
+                        if (text.Length == 0) break;
+                        if (hosts.Contains(sh))
+                        {
+                            conn.Reducers.SuggestCommand(incidentId, sh, text, S(call.Args, "rationale"));
+                            suggested.Add($"{sh}: {text}");
+                        }
+                        else skipped.Add($"'{sh}' is not a registered host");
+                        break;
+                    default:
+                        ServiceRunner.Log($"Ignored unknown tool '{call.Name}'.");
                         break;
                 }
             }
             catch (Exception ex) { ServiceRunner.Log($"Tool {call.Name} failed: {ex.Message}"); }
         }
 
+        // Tell the responder where suggested commands went, in plain words. Suggestions alone are a full answer.
+        var terminalNote = suggested.Count == 0 ? "" :
+            $"I put {suggested.Count} command(s) under Terminal > \"Commands the AI suggests\" " +
+            $"({string.Join("; ", suggested)}). Check the reviewer's warning, then copy it into the terminal and run it yourself.";
+        if (skipped.Count > 0)
+            terminalNote += $" (Skipped {skipped.Count} suggestion(s): {string.Join("; ", skipped)}.)";
+
         if (!handled)
         {
-            if (!string.IsNullOrWhiteSpace(reply.Content)) conn.Reducers.AnswerRequest(requestId, reply.Content!, label);
+            var text = string.Join("\n\n", new[] { reply.Content?.Trim(), terminalNote }.Where(t => !string.IsNullOrWhiteSpace(t)));
+            if (!string.IsNullOrWhiteSpace(text)) conn.Reducers.AnswerRequest(requestId, text, label);
             else conn.Reducers.FailRequest(requestId, "The model returned nothing usable.");
         }
-    }
-
-    /// Small models sometimes write the tool call as JSON in the message text instead of using tool_calls.
-    /// Accepts {"tool":"submit_plan","arguments":{...}}, {"name":...,"arguments":...}, or a bare plan {"reasoning":...,"steps":[...]}.
-    static List<ToolCall> ToolCallsFromContent(string? content)
-    {
-        var found = new List<ToolCall>();
-        if (string.IsNullOrWhiteSpace(content)) return found;
-        var start = content.IndexOf('{');
-        var end = content.LastIndexOf('}');
-        if (start < 0 || end <= start) return found;
-        try
+        else if (terminalNote.Length > 0)
         {
-            if (JsonNode.Parse(content[start..(end + 1)]) is not JsonObject o) return found;
-            var name = o["tool"]?.ToString() ?? o["name"]?.ToString();
-            if (name != null && (o["arguments"] ?? o["args"] ?? o["parameters"]) is JsonObject a)
-                found.Add(new ToolCall(name, (JsonObject)a.DeepClone()));
-            else if (o["steps"] is JsonArray)
-                found.Add(new ToolCall("submit_plan", o));
+            conn.Reducers.PostAiMessage(incidentId, terminalNote, label);
         }
-        catch { /* not JSON: treat as a plain answer */ }
-        return found;
     }
 
-    static string S(JsonNode? n, string key) => n?[key]?.ToString() ?? "";
+    static void SubmitValidatedPlan(DbConnection conn, ulong requestId, JsonObject args, string label, HashSet<string> hosts)
+    {
+        var reasoning = S(args, "reasoning");
+        var steps = new List<PlannedStep>();
+        var dropped = new List<string>();
 
-    static T E<T>(string s) where T : struct, Enum =>
-        Enum.TryParse<T>(s.Replace("_", "").Replace(" ", ""), ignoreCase: true, out var v) ? v : default;
+        foreach (var s in args["steps"]?.AsArray() ?? new JsonArray())
+        {
+            var kind = S(s, "kind").Trim();
+            var host = S(s, "host").Trim();
+            var ps = new Dictionary<string, string>();
+            if (s?["params"] is JsonObject po)
+                foreach (var kv in po) ps[kv.Key] = kv.Value?.ToString() ?? "";
+            // Drop parameters the kind doesn't take (common with small models).
+            if (Catalog.TryGetValue(kind, out var keys))
+                foreach (var extra in ps.Keys.Where(k => !keys.Contains(k)).ToList()) ps.Remove(extra);
+
+            var problem = Problem(kind, host, ps, hosts);
+            if (problem != null) { dropped.Add($"{kind} on {host}: {problem}"); continue; }
+            steps.Add(new PlannedStep
+            {
+                Kind = kind, Host = host, Rationale = S(s, "rationale"),
+                Params = ps.Select(kv => new Param { Key = kv.Key, Value = kv.Value }).ToList(),
+            });
+        }
+
+        var note = dropped.Count == 0 ? "" : $"\n\n(Dropped {dropped.Count} step(s) that can't run: {string.Join("; ", dropped)}.)";
+        if (steps.Count > 0)
+        {
+            var nextStep = "\n\nWaiting for your approval on the Actions screen.";
+            conn.Reducers.SubmitPlan(requestId, reasoning + note + nextStep, steps, label);
+        }
+        else
+        {
+            var hint = hosts.Count == 0 ? "\n\nNo hosts are registered yet: add them under Settings > Hosts so actions can run." : "";
+            conn.Reducers.AnswerRequest(requestId, reasoning + note + hint, label);
+        }
+    }
+
+    public static string S(JsonNode? n, string key) => n?[key]?.ToString() ?? "";
 }

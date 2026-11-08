@@ -13,10 +13,13 @@ public static class ServiceProvisioner
 
     public static readonly Service[] All =
     {
-        new("agent", Role.Agent, "Planning agent"),
+        new("agent", Role.Agent, "Response agent"),
         new("reviewer", Role.Reviewer, "Reviewer agent"),
+        new("parser", Role.Parser, "Parser agent"),
         new("executor", Role.Executor, "Executor"),
     };
+
+    public static Service Get(string key) => All.First(s => s.Key == key);
 
     static bool _running;
 

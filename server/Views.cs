@@ -87,6 +87,14 @@ public static partial class Module
     public static List<TerminalOutput> TerminalOutputView(ViewContext ctx) =>
         IsMember(ctx) ? ctx.Db.TerminalOutput.Bucket.Filter(All).ToList() : new List<TerminalOutput>();
 
+    [SpacetimeDB.View(Accessor = "IndicatorView", Public = true)]
+    public static List<Indicator> IndicatorView(ViewContext ctx) =>
+        IsMember(ctx) ? ctx.Db.Indicator.Bucket.Filter(All).ToList() : new List<Indicator>();
+
+    [SpacetimeDB.View(Accessor = "ParserCursorView", Public = true)]
+    public static List<ParserCursor> ParserCursorView(ViewContext ctx) =>
+        IsMember(ctx) ? ctx.Db.ParserCursor.Bucket.Filter(All).ToList() : new List<ParserCursor>();
+
     [SpacetimeDB.View(Accessor = "AuditView", Public = true)]
     public static List<AuditEntry> AuditView(ViewContext ctx) =>
         IsHumanMember(ctx) ? ctx.Db.AuditEntry.Bucket.Filter(All).ToList() : new List<AuditEntry>();

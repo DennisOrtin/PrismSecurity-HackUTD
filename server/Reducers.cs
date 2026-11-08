@@ -12,8 +12,8 @@ public static partial class Module
         ctx.Db.Config.Insert(new Config
         {
             Id = 0, BootstrapDone = false, AutoApproveReadOnly = false, UserCounter = 0, ResponderAddress = "",
-            AiProvider = AiProvider.Local, AgentModel = AiModel.Nano, ReviewerModel = AiModel.Nano,
-            AgentEnabled = true, ReviewerEnabled = true, ExecutorEnabled = true,
+            AgentModel = "", ReviewerModel = "", ParserModel = "",
+            AgentEnabled = true, ReviewerEnabled = true, ExecutorEnabled = true, ParserEnabled = true,
         });
         ctx.Db.AuditHead.Insert(new AuditHead { Id = 0, LastHash = "GENESIS", Count = 0 });
     }
@@ -96,6 +96,7 @@ public static partial class Module
         Role.Agent => cfg.AgentEnabled,
         Role.Reviewer => cfg.ReviewerEnabled,
         Role.Executor => cfg.ExecutorEnabled,
+        Role.Parser => cfg.ParserEnabled,
         _ => true,
     };
 
@@ -111,6 +112,7 @@ public static partial class Module
         {
             Role.Agent => cfg with { AgentEnabled = enabled },
             Role.Reviewer => cfg with { ReviewerEnabled = enabled },
+            Role.Parser => cfg with { ParserEnabled = enabled },
             _ => cfg with { ExecutorEnabled = enabled },
         };
         ctx.Db.Config.Id.Update(cfg);
@@ -158,13 +160,14 @@ public static partial class Module
         WriteAudit(ctx, u.Username, "set_auto_approve_read_only", Payload("enabled", enabled));
     }
 
-    /// Commander switches provider/models live. Cloud sends incident data off this laptop: audited.
+    /// Commander picks each local agent's model. Applied on the agents' next call.
     [SpacetimeDB.Reducer]
-    public static void SetAiConfig(ReducerContext ctx, AiProvider provider, AiModel agentModel, AiModel reviewerModel)
+    public static void SetAiConfig(ReducerContext ctx, string agentModel, string reviewerModel, string parserModel)
     {
         var u = Require(ctx, Role.Commander);
-        ctx.Db.Config.Id.Update(GetConfig(ctx) with { AiProvider = provider, AgentModel = agentModel, ReviewerModel = reviewerModel });
-        WriteAudit(ctx, u.Username, "set_ai_config", Payload("provider", provider, "agent_model", agentModel, "reviewer_model", reviewerModel));
+        if (new[] { agentModel, reviewerModel, parserModel }.Any(m => m.Length > 200)) throw new Exception("Model ID too long.");
+        ctx.Db.Config.Id.Update(GetConfig(ctx) with { AgentModel = agentModel, ReviewerModel = reviewerModel, ParserModel = parserModel });
+        WriteAudit(ctx, u.Username, "set_ai_config", Payload("agent_model", agentModel, "reviewer_model", reviewerModel, "parser_model", parserModel));
     }
 
     /// The app records every posture Fix/Undo here so it lands in the audit chain.
@@ -186,6 +189,7 @@ public static partial class Module
         {
             Id = 0, Title = title.Trim(), Phase = Phase.Detected, Severity = severity,
             OpenedAt = ctx.Timestamp, OpenedBy = u.Username, Summary = "",
+            AiSummary = "", Classification = "", AiUpdatedAt = ctx.Timestamp,
         });
         AddEntry(ctx, inc.Id, u.Username, AuthorKind.System, "Detection", $"Incident opened by {u.Username}: {title}", true);
         WriteAudit(ctx, u.Username, "open_incident", Payload("id", inc.Id, "title", title, "severity", severity));
@@ -223,6 +227,23 @@ public static partial class Module
     {
         var u = Require(ctx, Role.Commander, Role.Responder);
         var e = ctx.Db.TimelineEntry.Id.Find(entryId) ?? throw new Exception("No such entry.");
+
+        // An AI entry filed under a phase (Detected, Analysis, Containment…) is a proposed phase change.
+        // Accepting it moves the incident, exactly like the Overview phase buttons. Commander only, as there.
+        if (accept && Enum.TryParse<Phase>(e.Category, out var phase))
+        {
+            var inc = ctx.Db.Incident.Id.Find(e.IncidentId) ?? throw new Exception("No such incident.");
+            if (inc.Phase != phase)
+            {
+                if (u.Role != Role.Commander)
+                    throw new Exception($"Accepting this moves the incident to {phase}. Only the incident commander can change the phase.");
+                ctx.Db.Incident.Id.Update(inc with { Phase = phase });
+                AddEntry(ctx, e.IncidentId, u.Username, AuthorKind.System, phase.ToString(),
+                         $"Phase changed to {phase} by {u.Username} (accepted an AI timeline entry)", true);
+                WriteAudit(ctx, u.Username, "set_phase", Payload("id", e.IncidentId, "phase", phase, "via", $"timeline entry {entryId}"));
+            }
+        }
+
         if (accept) ctx.Db.TimelineEntry.Id.Update(e with { Accepted = true });
         else ctx.Db.TimelineEntry.Id.Delete(entryId);
         WriteAudit(ctx, u.Username, accept ? "accept_ai_entry" : "reject_ai_entry", Payload("id", entryId, "text", e.Text));
@@ -257,7 +278,7 @@ public static partial class Module
 
     /// Dashboard -> DB. Stores the prompt and the chat message; the agent picks it up by subscription.
     [SpacetimeDB.Reducer]
-    public static void SubmitPrompt(ReducerContext ctx, ulong incidentId, string text, ModelChoice model)
+    public static void SubmitPrompt(ReducerContext ctx, ulong incidentId, string text, string model)
     {
         var u = Require(ctx, Role.Commander, Role.Responder);
         if (ctx.Db.Incident.Id.Find(incidentId) is null) throw new Exception("No such incident.");
@@ -353,7 +374,7 @@ public static partial class Module
     [SpacetimeDB.Reducer]
     public static void ProposeTimelineEntry(ReducerContext ctx, ulong incidentId, string category, string text)
     {
-        var u = Require(ctx, Role.Agent);
+        var u = Require(ctx, Role.Agent, Role.Parser);
         AddEntry(ctx, incidentId, u.Username, AuthorKind.Assistant, category, text, false);
     }
 
@@ -361,13 +382,83 @@ public static partial class Module
     public static void ProposeScopeUpdate(ReducerContext ctx, ulong incidentId, string host, DataClass dataClass,
                                           ScopeLevel scopeLevel, DataStatus status, string evidence)
     {
-        var u = Require(ctx, Role.Agent);
+        var u = Require(ctx, Role.Agent, Role.Parser);
+        if (ctx.Db.Incident.Id.Find(incidentId) is null) throw new Exception("No such incident.");
+        var same = ctx.Db.Asset.IncidentId.Filter(incidentId).Where(a => a.Host == host && a.DataClass == dataClass).ToList();
+
+        // Already accepted by a human with the same status and scope: nothing new to propose.
+        if (same.Any(a => a.Accepted && a.Status == status && a.ScopeLevel == scopeLevel)) return;
+
+        // An earlier AI proposal for the same host + data is still pending: update it instead of piling up.
+        var pending = same.Where(a => !a.Accepted).ToList();
+        if (pending.Count > 0)
+        {
+            ctx.Db.Asset.Id.Update(pending[0] with
+            {
+                ScopeLevel = scopeLevel, Status = status, Evidence = evidence, UpdatedBy = u.Username, UpdatedAt = ctx.Timestamp,
+            });
+            return;
+        }
         ctx.Db.Asset.Insert(new Asset
         {
             Id = 0, IncidentId = incidentId, Host = host, DataClass = dataClass, ScopeLevel = scopeLevel, Status = status,
             Evidence = evidence, UpdatedBy = u.Username, UpdatedAt = ctx.Timestamp, Accepted = false,
         });
     }
+
+    // ===================== Parser agent =====================
+    // The parser turns everything in the dashboard into structured data. Its writes are always labelled
+    // as AI-derived and never trigger actions; scope changes still need a human to accept them.
+
+    [SpacetimeDB.Reducer]
+    public static void UpdateIncidentAnalysis(ReducerContext ctx, ulong incidentId, string aiSummary, string classification)
+    {
+        Require(ctx, Role.Parser);
+        var inc = ctx.Db.Incident.Id.Find(incidentId) ?? throw new Exception("No such incident.");
+        ctx.Db.Incident.Id.Update(inc with
+        {
+            AiSummary = Clip(aiSummary, 4000), Classification = Clip(classification, 120), AiUpdatedAt = ctx.Timestamp,
+        });
+    }
+
+    [SpacetimeDB.Reducer]
+    public static void UpsertIndicator(ReducerContext ctx, ulong incidentId, IndicatorKind kind, string value,
+                                       string context, Confidence confidence, string source)
+    {
+        Require(ctx, Role.Parser);
+        if (ctx.Db.Incident.Id.Find(incidentId) is null) throw new Exception("No such incident.");
+        var v = value.Trim();
+        if (v.Length is < 1 or > 300) throw new Exception("Indicator value must be 1-300 characters.");
+        var existing = ctx.Db.Indicator.IncidentId.Filter(incidentId).Where(i => i.Kind == kind && i.Value == v).ToList();
+        if (existing.Count > 0)
+        {
+            var e = existing[0];
+            var sources = e.Sources.Contains(source) ? e.Sources : Clip($"{e.Sources}, {source}", 500);
+            ctx.Db.Indicator.Id.Update(e with
+            {
+                Context = Clip(context, 300), Confidence = (Confidence)Math.Max((int)e.Confidence, (int)confidence),
+                Sources = sources, LastSeen = ctx.Timestamp,
+            });
+            return;
+        }
+        ctx.Db.Indicator.Insert(new Indicator
+        {
+            Id = 0, IncidentId = incidentId, Kind = kind, Value = v, Context = Clip(context, 300), Confidence = confidence,
+            Sources = Clip(source, 500), FirstSeen = ctx.Timestamp, LastSeen = ctx.Timestamp,
+        });
+    }
+
+    /// The parser records how far it has read each source, so every row is processed exactly once.
+    [SpacetimeDB.Reducer]
+    public static void AdvanceParserCursor(ReducerContext ctx, string source, ulong lastId)
+    {
+        Require(ctx, Role.Parser);
+        var row = ctx.Db.ParserCursor.Source.Find(source);
+        if (row is null) ctx.Db.ParserCursor.Insert(new ParserCursor { Source = source, LastId = lastId });
+        else if (lastId > row.Value.LastId) ctx.Db.ParserCursor.Source.Update(row.Value with { LastId = lastId });
+    }
+
+    static string Clip(string s, int n) => s.Length <= n ? s : s[..n];
 
     [SpacetimeDB.Reducer]
     public static void SuggestCommand(ReducerContext ctx, ulong incidentId, string host, string text, string rationale)
@@ -480,7 +571,7 @@ public static partial class Module
 
         var req = ctx.Db.AgentRequest.Id.Find(plan.Value.RequestId);
         byte depth = (byte)((req?.Depth ?? 0) + 1);
-        var model = req?.Model ?? ModelChoice.Default;
+        var model = req?.Model ?? "";
         var incidentId = plan.Value.IncidentId;
         if (depth > MaxAutoFollowUps)
         {
@@ -512,7 +603,7 @@ public static partial class Module
             ctx.Db.AgentRequest.Insert(new AgentRequest
             {
                 Id = 0, IncidentId = incidentId, FromUser = "system", Text = $"New severity-{severity} event on {host} ({source}). Re-assess.",
-                At = ctx.Timestamp, Status = RequestStatus.Pending, Model = ModelChoice.Default, Depth = 0,
+                At = ctx.Timestamp, Status = RequestStatus.Pending, Model = "", Depth = 0,
             });
     }
 

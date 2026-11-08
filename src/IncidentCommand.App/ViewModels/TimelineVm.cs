@@ -7,9 +7,10 @@ using SpacetimeDB.Types;
 
 namespace IncidentCommand.App.ViewModels;
 
-public sealed record EntryRow(ulong Id, string When, string Category, string Text, string Author, bool IsAiDraft, Brush AuthorBrush);
+public sealed record EntryRow(ulong Id, string When, string Category, string Text, string Author, bool IsAiDraft, Brush AuthorBrush,
+                              string AcceptLabel);
 public sealed record ChatRow(string When, string Author, string Text, Brush AuthorBrush, string ModelLabel);
-public sealed record ModelOption(string Label, ModelChoice Value);
+public sealed record ModelOption(string Label, string Value);   // Value = LM Studio model ID, "" = default
 
 public partial class TimelineVm : PageVm
 {
@@ -20,11 +21,9 @@ public partial class TimelineVm : PageVm
         { "Note", "Communication", "Detected", "Analysis", "Containment", "Eradication", "Recovery", "Closed" };
 
     public ModelOption[] ModelOptions { get; } =
-    {
-        new("Default model (set in Settings)", ModelChoice.Default),
-        new("Nemotron 3.5 Nano 4B", ModelChoice.Nano),
-        new("Nemotron 3.5 Lightning", ModelChoice.Lightning),
-    };
+        new[] { new ModelOption("Agent's model (set in Settings)", "") }
+            .Concat(Settings.Current.Ai.Models.Select(m => new ModelOption(m.Name, m.Id)))
+            .ToArray();
     [ObservableProperty] ModelOption selectedModel = null!;
 
     [ObservableProperty] string prompt = "";
@@ -41,12 +40,18 @@ public partial class TimelineVm : PageVm
     public override void Refresh()
     {
         var id = IncidentId;
+        var currentPhase = Conn.Db.IncidentView.Iter().Where(i => i.Id == id).Select(i => i.Phase).FirstOrDefault();
         Entries.Clear();
         foreach (var e in Conn.Db.TimelineView.Iter().Where(e => e.IncidentId == id).OrderByDescending(e => e.Id))
+        {
+            // An AI entry filed under a different phase is a proposed phase change: say so on the button.
+            bool movesPhase = Enum.TryParse<Phase>(e.Category, out var p) && p != currentPhase;
             Entries.Add(new EntryRow(e.Id, Stdb.Ago(e.At), e.Category, e.Text,
                 e.AuthorKind == AuthorKind.Assistant ? $"{e.Author} (AI)" : e.Author,
                 e.AuthorKind == AuthorKind.Assistant && !e.Accepted,
-                e.AuthorKind == AuthorKind.Assistant ? Warning : Neutral));
+                e.AuthorKind == AuthorKind.Assistant ? Warning : Neutral,
+                movesPhase ? $"Accept and move incident to {p}" : "Accept"));
+        }
 
         Chat.Clear();
         foreach (var m in Conn.Db.MessageView.Iter().Where(m => m.IncidentId == id).OrderBy(m => m.Id))

@@ -5,7 +5,7 @@ using SpacetimeDB;
 
 // ---------- Enums and small types ----------
 
-[SpacetimeDB.Type] public enum Role { Commander, Responder, Observer, Agent, Reviewer, Executor }
+[SpacetimeDB.Type] public enum Role { Commander, Responder, Observer, Agent, Reviewer, Executor, Parser }
 [SpacetimeDB.Type] public enum Tier { ReadOnly, Containment, Destructive }
 [SpacetimeDB.Type] public enum ActionStatus { Proposed, Approved, Denied, Running, Succeeded, Failed, Stale }
 [SpacetimeDB.Type] public enum Phase { Detected, Analysis, Containment, Eradication, Recovery, Closed }
@@ -16,9 +16,8 @@ using SpacetimeDB;
 [SpacetimeDB.Type] public enum Risk { None, Caution, Danger }
 [SpacetimeDB.Type] public enum RequestStatus { Pending, Planned, Failed }
 [SpacetimeDB.Type] public enum TerminalStatus { Queued, Running, Done, Failed }
-[SpacetimeDB.Type] public enum AiProvider { Local, Cloud }        // Local = LM Studio on this laptop; Cloud = NVIDIA Brev (dev/testing)
-[SpacetimeDB.Type] public enum AiModel { Nano, Lightning }        // Nemotron 3.5 Nano 4B | Nemotron 3.5 Lightning
-[SpacetimeDB.Type] public enum ModelChoice { Default, Nano, Lightning }   // per-request override
+[SpacetimeDB.Type] public enum IndicatorKind { IpAddress, Account, Host, Process, File, Hash, Domain, Url, Other }
+[SpacetimeDB.Type] public enum Confidence { Low, Medium, High }
 
 [SpacetimeDB.Type]
 public partial struct Param
@@ -73,13 +72,16 @@ public partial struct Config
     public bool AutoApproveReadOnly;
     public ulong UserCounter;
     public string ResponderAddress;                    // the laptop's IP on the network, never a valid target
-    public AiProvider AiProvider;                      // switched live by the commander; agent + reviewer read it per call
-    public AiModel AgentModel;
-    public AiModel ReviewerModel;
+    // All AI runs locally (LM Studio). Each agent has its own model; read on every call, so changes apply live.
+    // LM Studio model IDs. "" = the default for that agent in settings.json.
+    public string AgentModel;
+    public string ReviewerModel;
+    public string ParserModel;
     // Built-in services. On by default; only the commander can switch one off (its identity is then inactive).
     public bool AgentEnabled;
     public bool ReviewerEnabled;
     public bool ExecutorEnabled;
+    public bool ParserEnabled;
 }
 
 [SpacetimeDB.Table(Accessor = "SshHost")]
@@ -108,7 +110,10 @@ public partial struct Incident
     public byte Severity;                              // 1 (low) to 4 (critical)
     public Timestamp OpenedAt;
     public string OpenedBy;
-    public string Summary;
+    public string Summary;                             // written by humans
+    public string AiSummary;                           // maintained by the parser agent
+    public string Classification;                      // parser's best guess: e.g. "Ransomware with data exfiltration"
+    public Timestamp AiUpdatedAt;
 }
 
 [SpacetimeDB.Table(Accessor = "TimelineEntry")]
@@ -174,7 +179,7 @@ public partial struct AgentRequest
     public string Text;
     public Timestamp At;
     public RequestStatus Status;
-    public ModelChoice Model;                          // Default = use Config.AgentModel
+    public string Model;                               // LM Studio model ID for this request only; "" = Config.AgentModel
     public byte Depth;                                 // 0 = asked by a human or an event; +1 per automatic follow-up
 }
 
@@ -260,6 +265,37 @@ public partial struct Message
     public string Text;
     public Timestamp At;
     public string ModelLabel;                          // which model wrote it ("" for humans)
+}
+
+// ---------- Parser agent output ----------
+
+/// Indicators of compromise and other key facts the parser extracts (attacker IPs, compromised accounts,
+/// malicious processes, touched files...). One row per (incident, kind, value); the parser updates it.
+[SpacetimeDB.Table(Accessor = "Indicator")]
+public partial struct Indicator
+{
+    [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Id;
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
+    [SpacetimeDB.Index.BTree] public ulong IncidentId;
+    public IndicatorKind Kind;
+    public string Value;
+    public string Context;                             // one line: what it is and why it matters
+    public Confidence Confidence;
+    public string Sources;                             // e.g. "event 12, action 4, message 9"
+    public Timestamp FirstSeen;
+    public Timestamp LastSeen;
+}
+
+/// How far the parser has read each source table, so it processes every row exactly once.
+[SpacetimeDB.Table(Accessor = "ParserCursor")]
+public partial struct ParserCursor
+{
+    [SpacetimeDB.PrimaryKey] public string Source;     // "event", "message", "timeline", "action", "terminal", "asset"
+    /// Always 0 (see Indicator.Bucket).
+    [SpacetimeDB.Index.BTree] public byte Bucket;
+    public ulong LastId;
 }
 
 // ---------- Human terminal ----------

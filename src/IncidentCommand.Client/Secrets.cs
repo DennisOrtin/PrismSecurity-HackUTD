@@ -32,7 +32,7 @@ public static class InviteCodes
 /// The commander's app writes them automatically (ServiceProvisioner); the services only read them.
 public static class ServiceToken
 {
-    public static readonly string[] Roles = { "agent", "reviewer", "executor" };
+    public static readonly string[] Roles = { "agent", "reviewer", "parser", "executor" };
     static readonly byte[] Entropy = Encoding.UTF8.GetBytes("IncidentCommand.Service.v1");
     public static string PathFor(string role) => Path.Combine(AppPaths.Services, $"{role}.token");
     static string IdPathFor(string role) => Path.Combine(AppPaths.Services, $"{role}.id");

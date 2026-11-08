@@ -39,7 +39,7 @@
                         </Style.Triggers>
                       </Style>
                     </StackPanel.Style>
-                    <ui:Button Content="Accept" Appearance="Primary" Margin="0,0,8,0"
+                    <ui:Button Content="{Binding AcceptLabel}" Appearance="Primary" Margin="0,0,8,0"
                                Command="{Binding DataContext.AcceptCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
                     <ui:Button Content="Reject"
                                Command="{Binding DataContext.RejectCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />

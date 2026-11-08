@@ -61,9 +61,9 @@ public partial class MainVm : PageVm
 
         foreach (var c in Conn.Db.ConfigView.Iter())
         {
-            bool cloud = c.AiProvider == AiProvider.Cloud;
-            AiLine = cloud ? $"AI: {AiNames.Model(c.AgentModel)} · CLOUD (data leaves this laptop)" : $"AI: {AiNames.Model(c.AgentModel)} · local";
-            AiBrush = cloud ? Danger : Neutral;
+            string M(bool on, string configured, string agent) => on ? AiNames.Name(AiNames.Resolve(configured, agent)) : "off";
+            AiLine = $"Local AI · agent: {M(c.AgentEnabled, c.AgentModel, "agent")} · reviewer: {M(c.ReviewerEnabled, c.ReviewerModel, "reviewer")} · parser: {M(c.ParserEnabled, c.ParserModel, "parser")}";
+            AiBrush = c.AgentEnabled && c.ReviewerEnabled && c.ParserEnabled ? Neutral : Warning;
         }
 
         var pending = Conn.Db.ActionView.Iter().Count(a => a.IncidentId == id && a.Status == ActionStatus.Proposed);

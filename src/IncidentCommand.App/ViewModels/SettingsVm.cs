@@ -30,26 +30,26 @@ public partial class SettingsVm : PageVm
     [ObservableProperty] bool autoApproveReadOnly;
     [ObservableProperty] string auditStatus = "";
 
-    // ---- AI provider and models (stored in the database, applied by the agent on its next call) ----
-    public AiProvider[] Providers { get; } = Enum.GetValues<AiProvider>();
-    public AiModel[] Models { get; } = Enum.GetValues<AiModel>();
-    [ObservableProperty] AiProvider aiProvider;
-    [ObservableProperty] AiModel agentModel;
-    [ObservableProperty] AiModel reviewerModel;
-    [ObservableProperty] bool isCloud;
+    // ---- Local AI models, one per agent (stored in the database, applied on each agent's next call) ----
+    // Model IDs from settings.json. The combo boxes bind SelectedValue to the ID.
+    public List<AiModelOption> Models { get; } = Settings.Current.Ai.Models;
+    [ObservableProperty] string agentModel = "";
+    [ObservableProperty] string reviewerModel = "";
+    [ObservableProperty] string parserModel = "";
     bool _loadingAi;
 
-    public string LocalEndpoint => $"{Settings.Current.Ai.Local.BaseUrl}   Nano: {Settings.Current.Ai.Local.NanoModel}   Lightning: {Settings.Current.Ai.Local.LightningModel}";
-    public string CloudEndpoint => $"{Settings.Current.Ai.Cloud.BaseUrl}   Nano: {Settings.Current.Ai.Cloud.NanoModel}   Lightning: {Settings.Current.Ai.Cloud.LightningModel}";
+    public string LocalEndpoint => $"LM Studio at {Settings.Current.Ai.BaseUrl}. Add or rename models under Ai.Models in settings.json.";
     public string SettingsFile => Settings.FilePath;
 
     // ---- Built-in services (agent, reviewer, executor): on unless the commander switches them off ----
     [ObservableProperty] bool agentEnabled = true;
     [ObservableProperty] bool reviewerEnabled = true;
     [ObservableProperty] bool executorEnabled = true;
+    [ObservableProperty] bool parserEnabled = true;
     [ObservableProperty] string agentStatus = "";
     [ObservableProperty] string reviewerStatus = "";
     [ObservableProperty] string executorStatus = "";
+    [ObservableProperty] string parserStatus = "";
     bool _loadingServices;
 
     public SettingsVm() => Refresh();
@@ -68,17 +68,19 @@ public partial class SettingsVm : PageVm
             AgentEnabled = c.AgentEnabled;
             ReviewerEnabled = c.ReviewerEnabled;
             ExecutorEnabled = c.ExecutorEnabled;
+            ParserEnabled = c.ParserEnabled;
             _loadingServices = false;
-            AgentStatus = ServiceStatus(ServiceProvisioner.All[0], c.AgentEnabled);
-            ReviewerStatus = ServiceStatus(ServiceProvisioner.All[1], c.ReviewerEnabled);
-            ExecutorStatus = ServiceStatus(ServiceProvisioner.All[2], c.ExecutorEnabled);
+            AgentStatus = ServiceStatus(ServiceProvisioner.Get("agent"), c.AgentEnabled);
+            ReviewerStatus = ServiceStatus(ServiceProvisioner.Get("reviewer"), c.ReviewerEnabled);
+            ParserStatus = ServiceStatus(ServiceProvisioner.Get("parser"), c.ParserEnabled);
+            ExecutorStatus = ServiceStatus(ServiceProvisioner.Get("executor"), c.ExecutorEnabled);
             if (string.IsNullOrEmpty(ResponderAddress)) ResponderAddress = c.ResponderAddress;
             AutoApproveReadOnly = c.AutoApproveReadOnly;
             _loadingAi = true;
-            AiProvider = c.AiProvider;
-            AgentModel = c.AgentModel;
-            ReviewerModel = c.ReviewerModel;
-            IsCloud = c.AiProvider == AiProvider.Cloud;
+            // Show the effective model ("" in the database means that agent's default).
+            AgentModel = AiNames.Resolve(c.AgentModel, "agent");
+            ReviewerModel = AiNames.Resolve(c.ReviewerModel, "reviewer");
+            ParserModel = AiNames.Resolve(c.ParserModel, "parser");
             _loadingAi = false;
         }
     }
@@ -123,6 +125,7 @@ public partial class SettingsVm : PageVm
     partial void OnAgentEnabledChanged(bool value) => PushService(Role.Agent, value);
     partial void OnReviewerEnabledChanged(bool value) => PushService(Role.Reviewer, value);
     partial void OnExecutorEnabledChanged(bool value) => PushService(Role.Executor, value);
+    partial void OnParserEnabledChanged(bool value) => PushService(Role.Parser, value);
 
     void PushService(Role role, bool enabled)
     {
@@ -137,31 +140,26 @@ public partial class SettingsVm : PageVm
     async Task ReplaceServiceIdentities()
     {
         var ok = System.Windows.MessageBox.Show(
-            "This gives the agent, reviewer and executor brand-new identities and revokes the old ones. " +
+            "This gives the agent, reviewer, parser and executor brand-new identities and revokes the old ones. " +
             "Use it if a service token may have been copied. Continue?",
             "Replace service identities?", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
         if (ok == System.Windows.MessageBoxResult.Yes) await ServiceProvisioner.EnsureAllAsync(force: true);
         Refresh();
     }
 
-    partial void OnAiProviderChanged(AiProvider value) => PushAi();
-    partial void OnAgentModelChanged(AiModel value) => PushAi();
-    partial void OnReviewerModelChanged(AiModel value) => PushAi();
+    partial void OnAgentModelChanged(string value) => PushAi();
+    partial void OnReviewerModelChanged(string value) => PushAi();
+    partial void OnParserModelChanged(string value) => PushAi();
 
     void PushAi()
     {
         if (_loadingAi || Session.Conn == null || !Session.IsCommander) return;
+        if (string.IsNullOrEmpty(AgentModel) || string.IsNullOrEmpty(ReviewerModel) || string.IsNullOrEmpty(ParserModel)) return;
         foreach (var c in Conn.Db.ConfigView.Iter())
-            if (c.AiProvider == AiProvider && c.AgentModel == AgentModel && c.ReviewerModel == ReviewerModel) return;
-        if (AiProvider == AiProvider.Cloud && !Conn.Db.ConfigView.Iter().Any(c => c.AiProvider == AiProvider.Cloud))
-        {
-            var ok = System.Windows.MessageBox.Show(
-                "Cloud mode sends incident data (logs, scope, actions) to the Brev endpoint over the internet.\n\n" +
-                "Use it only for development and testing. Switch to cloud?",
-                "Send incident data off this laptop?", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Warning);
-            if (ok != System.Windows.MessageBoxResult.Yes) { Refresh(); return; }
-        }
-        Conn.Reducers.SetAiConfig(AiProvider, AgentModel, ReviewerModel);
+            if (AiNames.Resolve(c.AgentModel, "agent") == AgentModel &&
+                AiNames.Resolve(c.ReviewerModel, "reviewer") == ReviewerModel &&
+                AiNames.Resolve(c.ParserModel, "parser") == ParserModel) return;
+        Conn.Reducers.SetAiConfig(AgentModel, ReviewerModel, ParserModel);
     }
 
     /// Recompute the hash chain from GENESIS. Same formula as Module.WriteAudit.

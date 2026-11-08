@@ -4,4 +4,5 @@ cd /d "%~dp0"
 for %%P in (Agent.exe Executor.exe) do taskkill /im %%P /f >nul 2>&1
 start "Agent" cmd /k dist\Agent.exe agent
 start "Reviewer" cmd /k dist\Agent.exe reviewer
+start "Parser" cmd /k dist\Agent.exe parser
 start "Executor" cmd /k dist\Executor.exe

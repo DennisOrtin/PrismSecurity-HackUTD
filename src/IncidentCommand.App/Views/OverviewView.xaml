@@ -27,6 +27,20 @@
         </StackPanel>
       </Border>
 
+      <!-- What the parser agent has worked out -->
+      <Border Style="{StaticResource Card}" BorderBrush="{StaticResource WarningBrush}" BorderThickness="1">
+        <StackPanel>
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Right" Text="{Binding AiUpdated}" Style="{StaticResource Muted}" VerticalAlignment="Center" />
+            <TextBlock Text="What we know so far (parser AI)" Style="{StaticResource H2}" />
+          </DockPanel>
+          <TextBlock Text="{Binding Classification}" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource WarningBrush}" Margin="0,0,0,6" />
+          <TextBlock Text="{Binding AiSummary}" TextWrapping="Wrap" />
+          <TextBlock Style="{StaticResource Muted}" Margin="0,8,0,0"
+                     Text="Written by AI from everything in this incident, including attacker-controlled logs. Check it against the evidence." />
+        </StackPanel>
+      </Border>
+
       <!-- Scope: what data is affected and how -->
       <TextBlock Text="What data is affected" Style="{StaticResource H1}" />
       <DataGrid ItemsSource="{Binding Scope}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" Margin="0,0,0,12">
@@ -71,6 +85,23 @@
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
+
+      <!-- Indicators of compromise extracted by the parser -->
+      <TextBlock Text="Indicators (attacker IPs, accounts, processes, files)" Style="{StaticResource H2}" />
+      <DataGrid ItemsSource="{Binding Indicators}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" Margin="0,0,0,12" MaxHeight="320">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Type" Binding="{Binding Kind}" Width="110" />
+          <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="200" FontFamily="Consolas" />
+          <DataGridTemplateColumn Header="Confidence" Width="110">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate><TextBlock Text="{Binding Confidence}" Foreground="{Binding ConfidenceBrush}" FontWeight="Bold" /></DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="What it is" Binding="{Binding Context}" Width="*" />
+          <DataGridTextColumn Header="Seen in" Binding="{Binding Sources}" Width="170" />
+          <DataGridTextColumn Header="Last seen" Binding="{Binding LastSeen}" Width="90" />
+        </DataGrid.Columns>
+      </DataGrid>
 
       <!-- Record scope by hand -->
       <Border Style="{StaticResource Card}">

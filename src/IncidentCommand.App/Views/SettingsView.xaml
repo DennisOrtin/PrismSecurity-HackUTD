@@ -74,13 +74,15 @@
                      Text="Always on unless you switch them off. A switched-off service stays running but the database refuses everything it tries to do." />
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="260" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-            <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
-            <CheckBox Grid.Row="0" Content="Planning agent" IsChecked="{Binding AgentEnabled}" IsEnabled="{Binding IsCommander}" Margin="0,0,0,8" />
+            <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+            <CheckBox Grid.Row="0" Content="Response agent" IsChecked="{Binding AgentEnabled}" IsEnabled="{Binding IsCommander}" Margin="0,0,0,8" />
             <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding AgentStatus}" Style="{StaticResource Muted}" VerticalAlignment="Center" />
             <CheckBox Grid.Row="1" Content="Reviewer agent" IsChecked="{Binding ReviewerEnabled}" IsEnabled="{Binding IsCommander}" Margin="0,0,0,8" />
             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ReviewerStatus}" Style="{StaticResource Muted}" VerticalAlignment="Center" />
-            <CheckBox Grid.Row="2" Content="Executor" IsChecked="{Binding ExecutorEnabled}" IsEnabled="{Binding IsCommander}" Margin="0,0,0,8" />
-            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ExecutorStatus}" Style="{StaticResource Muted}" VerticalAlignment="Center" />
+            <CheckBox Grid.Row="2" Content="Parser agent" IsChecked="{Binding ParserEnabled}" IsEnabled="{Binding IsCommander}" Margin="0,0,0,8" />
+            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ParserStatus}" Style="{StaticResource Muted}" VerticalAlignment="Center" />
+            <CheckBox Grid.Row="3" Content="Executor" IsChecked="{Binding ExecutorEnabled}" IsEnabled="{Binding IsCommander}" Margin="0,0,0,8" />
+            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ExecutorStatus}" Style="{StaticResource Muted}" VerticalAlignment="Center" />
           </Grid>
           <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
             <ui:Button Content="Set up missing services now" Command="{Binding SetUpServicesCommand}" IsEnabled="{Binding IsCommander}" Margin="0,0,8,0" />
@@ -92,31 +94,19 @@
       <!-- AI -->
       <Border Style="{StaticResource Card}">
         <StackPanel>
-          <TextBlock Text="AI" Style="{StaticResource H2}" />
+          <TextBlock Text="AI models (all run on this laptop)" Style="{StaticResource H2}" />
           <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,12"
-                     Text="Changes take effect on the agents' next call. Endpoints and model IDs live in the settings file below." />
+                     Text="Each agent can use a different model. Changes apply on that agent's next call. LM Studio's address and the exact model IDs are in the settings file below." />
           <WrapPanel>
-            <StackPanel Margin="0,0,16,8"><TextBlock Text="Provider" />
-              <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding AiProvider}" Width="160" IsEnabled="{Binding IsCommander}" /></StackPanel>
-            <StackPanel Margin="0,0,16,8"><TextBlock Text="Planning agent model" />
-              <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding AgentModel}" Width="180" IsEnabled="{Binding IsCommander}" /></StackPanel>
-            <StackPanel Margin="0,0,16,8"><TextBlock Text="Reviewer model" />
-              <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding ReviewerModel}" Width="180" IsEnabled="{Binding IsCommander}" /></StackPanel>
+            <StackPanel Margin="0,0,16,8"><TextBlock Text="Response agent" />
+              <ComboBox ItemsSource="{Binding Models}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding AgentModel}" Width="230" IsEnabled="{Binding IsCommander}" /></StackPanel>
+            <StackPanel Margin="0,0,16,8"><TextBlock Text="Reviewer" />
+              <ComboBox ItemsSource="{Binding Models}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding ReviewerModel}" Width="230" IsEnabled="{Binding IsCommander}" /></StackPanel>
+            <StackPanel Margin="0,0,16,8"><TextBlock Text="Parser" />
+              <ComboBox ItemsSource="{Binding Models}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding ParserModel}" Width="230" IsEnabled="{Binding IsCommander}" /></StackPanel>
           </WrapPanel>
-          <Border Background="{StaticResource DangerBrush}" Padding="10,8" CornerRadius="4" Margin="0,4,0,8">
-            <Border.Style>
-              <Style TargetType="Border">
-                <Setter Property="Visibility" Value="Collapsed" />
-                <Style.Triggers><DataTrigger Binding="{Binding IsCloud}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
-              </Style>
-            </Border.Style>
-            <TextBlock Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap"
-                       Text="CLOUD MODE: incident data leaves this laptop. Development and testing only. The final build runs locally." />
-          </Border>
-          <TextBlock Text="Local (LM Studio)" FontWeight="SemiBold" />
+          <TextBlock Text="LM Studio" FontWeight="SemiBold" />
           <TextBlock Text="{Binding LocalEndpoint, Mode=OneWay}" Style="{StaticResource Muted}" FontFamily="Consolas" Margin="0,0,0,8" />
-          <TextBlock Text="Cloud (NVIDIA Brev)" FontWeight="SemiBold" />
-          <TextBlock Text="{Binding CloudEndpoint, Mode=OneWay}" Style="{StaticResource Muted}" FontFamily="Consolas" Margin="0,0,0,8" />
           <TextBlock Style="{StaticResource Muted}"><Run Text="Settings file: " /><Run Text="{Binding SettingsFile, Mode=OneWay}" /></TextBlock>
         </StackPanel>
       </Border>

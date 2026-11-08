@@ -2,35 +2,36 @@ using System.Text.Json;
 
 namespace IncidentCommand.Client;
 
-/// One AI endpoint (OpenAI-compatible /chat/completions) and the model ID each Nemotron model has there.
-/// Model IDs differ per provider: copy them from LM Studio's server tab, or from your Brev deployment.
-public sealed class AiEndpoint
+/// One model loaded in LM Studio. Id must match LM Studio exactly (run `Agent.exe test` to list loaded IDs).
+public sealed class AiModelOption
 {
-    public string BaseUrl { get; set; } = "";
-    public string ApiKey { get; set; } = "";
-    public string NanoModel { get; set; } = "";
-    public string LightningModel { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Id { get; set; } = "";
 }
 
+/// The local LM Studio server (OpenAI-compatible). Everything runs on this laptop.
+/// Models listed here appear in Settings > AI; each agent's choice is stored in the database.
 public sealed class AiSettings
 {
-    /// LM Studio on this laptop. Final build: this is the only provider used.
-    public AiEndpoint Local { get; set; } = new()
+    public string BaseUrl { get; set; } = "http://127.0.0.1:1234/v1";
+    public string ApiKey { get; set; } = "lm-studio";
+
+    public List<AiModelOption> Models { get; set; } = new()
     {
-        BaseUrl = "http://127.0.0.1:1234/v1",
-        ApiKey = "lm-studio",
-        NanoModel = "nvidia-nemotron-3.5-nano-4b",
-        LightningModel = "nvidia-nemotron-3.5-lightning",
+        new() { Name = "Nemotron 3.5 Bolt E4B", Id = "nvidia-nemotron-3.5-bolt-e4b-4gb" },
+        new() { Name = "Nemotron 3 Nano 4B", Id = "nvidia-nemotron-3-nano-4b" },
+        new() { Name = "Qwen3 4B Instruct 2507", Id = "qwen3-4b-instruct-2507" },
     };
 
-    /// NVIDIA Brev deployment (OpenAI-compatible). DEVELOPMENT/TESTING ONLY: incident data leaves the laptop.
-    public AiEndpoint Cloud { get; set; } = new()
-    {
-        BaseUrl = "https://YOUR-BREV-DEPLOYMENT/v1",
-        ApiKey = "",
-        NanoModel = "nvidia/nemotron-3.5-nano-4b",
-        LightningModel = "nvidia/nemotron-3.5-lightning",
-    };
+    /// Used when the commander hasn't picked a model for that agent yet.
+    public string DefaultAgentModel { get; set; } = "nvidia-nemotron-3.5-bolt-e4b-4gb";
+    public string DefaultReviewerModel { get; set; } = "qwen3-4b-instruct-2507";
+    public string DefaultParserModel { get; set; } = "qwen3-4b-instruct-2507";
+
+    /// Per-agent output cap (tokens). Small caps keep the demo fast.
+    public int AgentMaxTokens { get; set; } = 900;
+    public int ReviewerMaxTokens { get; set; } = 200;
+    public int ParserMaxTokens { get; set; } = 1200;
 }
 
 /// Local settings, stored in %LOCALAPPDATA%\IncidentCommand\settings.json. Re-saved on load so new fields appear.
@@ -39,8 +40,8 @@ public sealed class Settings
     public string ServerUri { get; set; } = "http://127.0.0.1:3000";
     public string DatabaseName { get; set; } = "incident-command";
 
-    /// Which provider and models are ACTIVE is stored in the database (commander switches it live).
-    /// This file only holds where each provider lives and what each model is called there.
+    /// Which model each agent uses is stored in the database (commander switches it live).
+    /// This file only holds where LM Studio is and what each model is called there. Local only.
     public AiSettings Ai { get; set; } = new();
 
     /// Executor: private key used for SSH into the network (break-glass key, rotate after the incident).
@@ -78,15 +79,19 @@ public static class AppPaths
     static string Ensure(string p) { Directory.CreateDirectory(p); return p; }
 }
 
-/// Display names shared by the app and the agent.
+/// Model names and per-agent defaults, shared by the app and the agents.
 public static class AiNames
 {
-    public static string Model(SpacetimeDB.Types.AiModel m) => m switch
-    {
-        SpacetimeDB.Types.AiModel.Lightning => "Nemotron 3.5 Lightning",
-        _ => "Nemotron 3.5 Nano 4B",
-    };
+    /// The friendly name from settings.json, or the raw ID if it isn't listed.
+    public static string Name(string id) =>
+        Settings.Current.Ai.Models.FirstOrDefault(m => m.Id == id)?.Name ?? (string.IsNullOrEmpty(id) ? "(none)" : id);
 
-    public static string Label(SpacetimeDB.Types.AiModel m, SpacetimeDB.Types.AiProvider p) =>
-        $"{Model(m)} · {(p == SpacetimeDB.Types.AiProvider.Cloud ? "cloud" : "local")}";
+    /// The configured model for an agent, falling back to that agent's default in settings.json.
+    public static string Resolve(string configured, string agent) =>
+        !string.IsNullOrWhiteSpace(configured) ? configured : agent switch
+        {
+            "reviewer" => Settings.Current.Ai.DefaultReviewerModel,
+            "parser" => Settings.Current.Ai.DefaultParserModel,
+            _ => Settings.Current.Ai.DefaultAgentModel,
+        };
 }

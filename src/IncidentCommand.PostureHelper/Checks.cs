@@ -84,10 +84,10 @@ public static class Checks
             "(Get-NetTCPConnection -State Listen -LocalPort 3000 -ErrorAction SilentlyContinue | % LocalAddress | Sort-Object -Unique) -join ','",
             s => s.Length > 0 && s.Split(',').All(a => a is "127.0.0.1" or "::1"), null, null),
 
-        new("model-loopback", "The local AI endpoint is on this laptop", "M",
-            "Local (LM Studio) endpoint is loopback. Cloud mode is shown separately in the banner.",
-            "The 'Local' AI endpoint in settings.json is not on this laptop: incident data would leave the machine.",
-            $"$s=Get-Content '{SettingsPath}' -Raw | ConvertFrom-Json; ([Uri]$s.Ai.Local.BaseUrl).Host",
+        new("model-loopback", "The AI (LM Studio) runs on this laptop", "M",
+            "LM Studio endpoint is loopback: incident data never leaves the machine.",
+            "The AI endpoint in settings.json is not on this laptop: incident data would leave the machine.",
+            $"$s=Get-Content '{SettingsPath}' -Raw | ConvertFrom-Json; ([Uri]$s.Ai.BaseUrl).Host",
             s => s is "127.0.0.1" or "localhost" or "[::1]", null, null),
 
         new("signing-key-locked", "Only you can read SpacetimeDB's signing key", "",
