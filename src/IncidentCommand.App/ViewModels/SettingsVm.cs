@@ -43,6 +43,15 @@ public partial class SettingsVm : PageVm
     public string CloudEndpoint => $"{Settings.Current.Ai.Cloud.BaseUrl}   Nano: {Settings.Current.Ai.Cloud.NanoModel}   Lightning: {Settings.Current.Ai.Cloud.LightningModel}";
     public string SettingsFile => Settings.FilePath;
 
+    // ---- Built-in services (agent, reviewer, executor): on unless the commander switches them off ----
+    [ObservableProperty] bool agentEnabled = true;
+    [ObservableProperty] bool reviewerEnabled = true;
+    [ObservableProperty] bool executorEnabled = true;
+    [ObservableProperty] string agentStatus = "";
+    [ObservableProperty] string reviewerStatus = "";
+    [ObservableProperty] string executorStatus = "";
+    bool _loadingServices;
+
     public SettingsVm() => Refresh();
 
     public override void Refresh()
@@ -55,6 +64,14 @@ public partial class SettingsVm : PageVm
             Hosts.Add(new HostRow(h.Name, h.Address, h.Port, h.PinnedFingerprint));
         foreach (var c in Conn.Db.ConfigView.Iter())
         {
+            _loadingServices = true;
+            AgentEnabled = c.AgentEnabled;
+            ReviewerEnabled = c.ReviewerEnabled;
+            ExecutorEnabled = c.ExecutorEnabled;
+            _loadingServices = false;
+            AgentStatus = ServiceStatus(ServiceProvisioner.All[0], c.AgentEnabled);
+            ReviewerStatus = ServiceStatus(ServiceProvisioner.All[1], c.ReviewerEnabled);
+            ExecutorStatus = ServiceStatus(ServiceProvisioner.All[2], c.ExecutorEnabled);
             if (string.IsNullOrEmpty(ResponderAddress)) ResponderAddress = c.ResponderAddress;
             AutoApproveReadOnly = c.AutoApproveReadOnly;
             _loadingAi = true;
@@ -97,6 +114,34 @@ public partial class SettingsVm : PageVm
     {
         var current = Conn.Db.ConfigView.Iter().Select(c => c.AutoApproveReadOnly).FirstOrDefault();
         if (value != current && Session.IsCommander) Conn.Reducers.SetAutoApproveReadOnly(value);
+    }
+
+    static string ServiceStatus(ServiceProvisioner.Service s, bool enabled) =>
+        !ServiceProvisioner.IsProvisioned(s) ? "Identity not set up yet (happens automatically for the commander)"
+        : enabled ? "On" : "OFF: it refuses all work until switched back on";
+
+    partial void OnAgentEnabledChanged(bool value) => PushService(Role.Agent, value);
+    partial void OnReviewerEnabledChanged(bool value) => PushService(Role.Reviewer, value);
+    partial void OnExecutorEnabledChanged(bool value) => PushService(Role.Executor, value);
+
+    void PushService(Role role, bool enabled)
+    {
+        if (_loadingServices || Session.Conn == null || !Session.IsCommander) return;
+        Conn.Reducers.SetServiceEnabled(role, enabled);
+    }
+
+    [RelayCommand]
+    Task SetUpServices() => ServiceProvisioner.EnsureAllAsync();
+
+    [RelayCommand]
+    async Task ReplaceServiceIdentities()
+    {
+        var ok = System.Windows.MessageBox.Show(
+            "This gives the agent, reviewer and executor brand-new identities and revokes the old ones. " +
+            "Use it if a service token may have been copied. Continue?",
+            "Replace service identities?", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
+        if (ok == System.Windows.MessageBoxResult.Yes) await ServiceProvisioner.EnsureAllAsync(force: true);
+        Refresh();
     }
 
     partial void OnAiProviderChanged(AiProvider value) => PushAi();

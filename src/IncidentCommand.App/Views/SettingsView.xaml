@@ -66,6 +66,29 @@
         </StackPanel>
       </Border>
 
+      <!-- Built-in services -->
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <TextBlock Text="Built-in services" Style="{StaticResource H2}" />
+          <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,12"
+                     Text="Always on unless you switch them off. A switched-off service stays running but the database refuses everything it tries to do." />
+          <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="260" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+            <CheckBox Grid.Row="0" Content="Planning agent" IsChecked="{Binding AgentEnabled}" IsEnabled="{Binding IsCommander}" Margin="0,0,0,8" />
+            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding AgentStatus}" Style="{StaticResource Muted}" VerticalAlignment="Center" />
+            <CheckBox Grid.Row="1" Content="Reviewer agent" IsChecked="{Binding ReviewerEnabled}" IsEnabled="{Binding IsCommander}" Margin="0,0,0,8" />
+            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ReviewerStatus}" Style="{StaticResource Muted}" VerticalAlignment="Center" />
+            <CheckBox Grid.Row="2" Content="Executor" IsChecked="{Binding ExecutorEnabled}" IsEnabled="{Binding IsCommander}" Margin="0,0,0,8" />
+            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ExecutorStatus}" Style="{StaticResource Muted}" VerticalAlignment="Center" />
+          </Grid>
+          <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+            <ui:Button Content="Set up missing services now" Command="{Binding SetUpServicesCommand}" IsEnabled="{Binding IsCommander}" Margin="0,0,8,0" />
+            <ui:Button Content="Replace service identities" Command="{Binding ReplaceServiceIdentitiesCommand}" IsEnabled="{Binding IsCommander}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
       <!-- AI -->
       <Border Style="{StaticResource Card}">
         <StackPanel>

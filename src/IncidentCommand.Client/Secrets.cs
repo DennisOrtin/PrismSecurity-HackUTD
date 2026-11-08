@@ -29,18 +29,37 @@ public static class InviteCodes
 }
 
 /// Tokens for the agent, reviewer and executor services: DPAPI only, since they start without a human.
+/// The commander's app writes them automatically (ServiceProvisioner); the services only read them.
 public static class ServiceToken
 {
+    public static readonly string[] Roles = { "agent", "reviewer", "executor" };
     static readonly byte[] Entropy = Encoding.UTF8.GetBytes("IncidentCommand.Service.v1");
-    static string PathFor(string role) => Path.Combine(AppPaths.Services, $"{role}.token");
+    public static string PathFor(string role) => Path.Combine(AppPaths.Services, $"{role}.token");
+    static string IdPathFor(string role) => Path.Combine(AppPaths.Services, $"{role}.id");
 
-    public static void Save(string role, string token) =>
+    public static void Save(string role, string token, string identity = "")
+    {
         File.WriteAllBytes(PathFor(role), ProtectedData.Protect(Encoding.UTF8.GetBytes(token), Entropy, DataProtectionScope.CurrentUser));
+        File.WriteAllText(IdPathFor(role), identity);
+    }
 
-    public static string? Load(string role) =>
-        File.Exists(PathFor(role))
-            ? Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(PathFor(role)), Entropy, DataProtectionScope.CurrentUser))
-            : null;
+    public static string? Load(string role)
+    {
+        try
+        {
+            return File.Exists(PathFor(role))
+                ? Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(PathFor(role)), Entropy, DataProtectionScope.CurrentUser))
+                : null;
+        }
+        catch (IOException) { return null; }   // being rewritten right now; try again shortly
+    }
+
+    /// The identity (hex) the saved token belongs to, so the app can tell if it's still the enrolled one.
+    public static string? LoadIdentity(string role) =>
+        File.Exists(IdPathFor(role)) ? File.ReadAllText(IdPathFor(role)).Trim() : null;
+
+    public static DateTime Stamp(string role) =>
+        File.Exists(PathFor(role)) ? File.GetLastWriteTimeUtc(PathFor(role)) : DateTime.MinValue;
 }
 
 public static class Hashing

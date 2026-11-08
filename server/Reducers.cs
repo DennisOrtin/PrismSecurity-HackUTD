@@ -13,6 +13,7 @@ public static partial class Module
         {
             Id = 0, BootstrapDone = false, AutoApproveReadOnly = false, UserCounter = 0, ResponderAddress = "",
             AiProvider = AiProvider.Local, AgentModel = AiModel.Nano, ReviewerModel = AiModel.Nano,
+            AgentEnabled = true, ReviewerEnabled = true, ExecutorEnabled = true,
         });
         ctx.Db.AuditHead.Insert(new AuditHead { Id = 0, LastHash = "GENESIS", Count = 0 });
     }
@@ -64,20 +65,58 @@ public static partial class Module
 
         var cfg = GetConfig(ctx);
         var n = cfg.UserCounter + 1;
-        string username = IsHuman(inv.Role)
-            ? $"{inv.Role.ToString().ToLowerInvariant()}-{n:D2}"
-            : (ctx.Db.User.Username.Find(inv.Role.ToString().ToLowerInvariant()) is null
-                ? inv.Role.ToString().ToLowerInvariant()
-                : $"{inv.Role.ToString().ToLowerInvariant()}-{n:D2}");
+        bool active = true;
+        string username;
+        if (IsHuman(inv.Role))
+        {
+            username = $"{inv.Role.ToString().ToLowerInvariant()}-{n:D2}";
+        }
+        else
+        {
+            // Built-in service: exactly one identity per role, always named after the role.
+            // Re-provisioning replaces (and so revokes) the previous identity.
+            username = inv.Role.ToString().ToLowerInvariant();
+            foreach (var old in ctx.Db.User.Iter().Where(x => x.Role == inv.Role).ToList())
+                ctx.Db.User.Identity.Delete(old.Identity);
+            active = ServiceEnabled(cfg, inv.Role);
+        }
 
         ctx.Db.User.Insert(new User
         {
             Identity = ctx.Sender, Username = username, DisplayName = inv.DisplayName,
-            Role = inv.Role, Active = true, CreatedAt = ctx.Timestamp,
+            Role = inv.Role, Active = active, CreatedAt = ctx.Timestamp,
         });
         ctx.Db.Invite.CodeHash.Update(inv with { Used = true });
         ctx.Db.Config.Id.Update(cfg with { UserCounter = n });
         WriteAudit(ctx, username, "claim_invite", Payload("role", inv.Role, "created_by", inv.CreatedBy));
+    }
+
+    static bool ServiceEnabled(Config cfg, Role role) => role switch
+    {
+        Role.Agent => cfg.AgentEnabled,
+        Role.Reviewer => cfg.ReviewerEnabled,
+        Role.Executor => cfg.ExecutorEnabled,
+        _ => true,
+    };
+
+    /// Commander switches a built-in service on or off. Off = its identity is inactive, so every reducer
+    /// refuses it and every view returns nothing to it. The service process idles until switched back on.
+    [SpacetimeDB.Reducer]
+    public static void SetServiceEnabled(ReducerContext ctx, Role role, bool enabled)
+    {
+        var u = Require(ctx, Role.Commander);
+        if (IsHuman(role)) throw new Exception("Only the agent, reviewer and executor can be switched on or off here.");
+        var cfg = GetConfig(ctx);
+        cfg = role switch
+        {
+            Role.Agent => cfg with { AgentEnabled = enabled },
+            Role.Reviewer => cfg with { ReviewerEnabled = enabled },
+            _ => cfg with { ExecutorEnabled = enabled },
+        };
+        ctx.Db.Config.Id.Update(cfg);
+        foreach (var svc in ctx.Db.User.Iter().Where(x => x.Role == role).ToList())
+            ctx.Db.User.Identity.Update(svc with { Active = enabled });
+        WriteAudit(ctx, u.Username, "set_service_enabled", Payload("role", role, "enabled", enabled));
     }
 
     [SpacetimeDB.Reducer]

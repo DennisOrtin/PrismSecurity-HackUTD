@@ -17,6 +17,7 @@ call scripts\ensure-server.bat || goto :fail
 spacetime publish incident-command --module-path server --server http://127.0.0.1:3000 --delete-data -y || goto :fail
 del /q "%LOCALAPPDATA%\IncidentCommand\vaults\*.vault" >nul 2>&1
 del /q "%LOCALAPPDATA%\IncidentCommand\services\*.token" >nul 2>&1
+del /q "%LOCALAPPDATA%\IncidentCommand\services\*.id" >nul 2>&1
 
 del /q /s "src\IncidentCommand.Client\module_bindings\*.cs" >nul 2>&1
 spacetime generate --lang csharp --out-dir src\IncidentCommand.Client\module_bindings --module-path server || goto :fail

@@ -37,13 +37,19 @@ public static class Session
     }
 
     /// token == null => the local server mints a brand-new identity (used for enrollment).
-    public static Task<(DbConnection Conn, string Token)> OpenAsync(string? token)
+    public static async Task<(DbConnection Conn, string Token)> OpenAsync(string? token)
+    {
+        var (conn, tok, _) = await OpenWithIdentityAsync(token);
+        return (conn, tok);
+    }
+
+    public static Task<(DbConnection Conn, string Token, string Identity)> OpenWithIdentityAsync(string? token)
     {
         EnsurePump();
-        var tcs = new TaskCompletionSource<(DbConnection, string)>();
+        var tcs = new TaskCompletionSource<(DbConnection, string, string)>();
         DbConnection? conn = null;
         conn = Stdb.Connect(token,
-            onConnect: (c, _, tok) => tcs.TrySetResult((c, tok)),
+            onConnect: (c, id, tok) => tcs.TrySetResult((c, tok, id.ToString())),
             onError: e => { tcs.TrySetException(e); if (conn != null) Ticking.Remove(conn); },
             onDisconnect: (c, e) =>
             {
@@ -84,6 +90,9 @@ public static class Session
         Stdb.WatchAll(conn, () => _dirty = true);
         WireErrors(conn);
         _dirty = true;
+
+        // The commander's session makes sure the agent, reviewer and executor have identities.
+        if (role == Role.Commander) _ = ServiceProvisioner.EnsureAllAsync();
     }
 
     public static void Lock()
@@ -129,5 +138,6 @@ public static class Session
         r.OnSetResponderAddress += (ctx, _) => Check(ctx, "Saving the responder address");
         r.OnSetAutoApproveReadOnly += (ctx, _) => Check(ctx, "Changing auto-approve");
         r.OnRecordPosture += (ctx, _, _, _, _, _) => Check(ctx, "Recording the posture change");
+        r.OnSetServiceEnabled += (ctx, _, _) => Check(ctx, "Switching the service");
     }
 }

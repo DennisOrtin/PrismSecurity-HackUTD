@@ -76,6 +76,10 @@ public partial struct Config
     public AiProvider AiProvider;                      // switched live by the commander; agent + reviewer read it per call
     public AiModel AgentModel;
     public AiModel ReviewerModel;
+    // Built-in services. On by default; only the commander can switch one off (its identity is then inactive).
+    public bool AgentEnabled;
+    public bool ReviewerEnabled;
+    public bool ExecutorEnabled;
 }
 
 [SpacetimeDB.Table(Accessor = "SshHost")]

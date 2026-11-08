@@ -46,10 +46,16 @@ After every module change: `publish.ps1` (add `-Wipe` to reset data) then `gener
 
 ## Services (agent, reviewer, executor)
 
-1. In the app, Settings: create an invite for role Agent, one for Reviewer, one for Executor.
-2. `dist\Agent.exe enroll agent CODE`, `dist\Agent.exe enroll reviewer CODE`, `dist\Executor.exe enroll CODE`.
-3. `scripts\setup-keys.ps1` creates the break-glass SSH key; copy the printed public key to the sim laptop.
-4. `scripts\run-services.ps1` starts all three in their own windows.
+They are built in and need no setup. `run-full.bat` (or `start-services.bat`) starts all three; each waits
+until the incident commander logs in to the app, which creates their identities automatically and hands
+each one a DPAPI-protected token. They reconnect on their own if the database restarts or a token is replaced.
+
+The commander can switch any of them off in **Settings > Built-in services**. A switched-off service keeps
+running but its identity is inactive, so the database refuses everything it tries and shows it no data.
+"Replace service identities" revokes and recreates all three (use it if a token may have leaked).
+
+For the executor, `scripts\setup-keys.ps1` creates the break-glass SSH key; copy the printed public key to the
+sim laptop. Manual enrollment (`Agent.exe enroll agent CODE`) still works as a fallback but isn't needed.
 
 ## Sim laptop (Windows 11, Docker Desktop with WSL2)
 
