@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:v="clr-namespace:IncidentCommand.App.Views"
-        Title="Incident Command" Width="1600" Height="950" WindowState="Maximized" FontSize="14"
+        Title="Prism Security Console" Width="1600" Height="950" WindowState="Maximized" FontSize="14"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}">
   <Grid x:Name="Root">
     <Grid.ColumnDefinitions>
@@ -22,7 +22,7 @@
                 ToolTip="Show or hide the labels" HorizontalContentAlignment="Left" Padding="10,8">
           <StackPanel Orientation="Horizontal">
             <TextBlock Text="&#xE700;" FontFamily="{StaticResource IconFont}" FontSize="18" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" />
-            <TextBlock Text="Incident Command" Margin="14,0,0,0" FontWeight="SemiBold" VerticalAlignment="Center"
+            <TextBlock Text="Prism Security Console" Margin="14,0,0,0" FontWeight="SemiBold" VerticalAlignment="Center"
                        Visibility="{Binding SidebarExpanded, Converter={StaticResource BoolVis}}" />
           </StackPanel>
         </Button>
