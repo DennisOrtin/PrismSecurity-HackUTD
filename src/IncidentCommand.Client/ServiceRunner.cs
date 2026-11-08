@@ -21,8 +21,22 @@ public sealed class ServiceRunner
     /// Runs forever. `poll` is called on the connection thread about every 50 ms once subscribed.
     public void Run(string role, Action<DbConnection> onReady, Action<DbConnection> poll)
     {
-        var token = ServiceToken.Load(role)
-            ?? throw new InvalidOperationException($"No token for '{role}'. Enroll first: <exe> enroll <invite-code>");
+        var token = ServiceToken.Load(role);
+        if (token == null)
+        {
+            var cmd = role == "executor" ? "dist\\Executor.exe enroll CODE" : $"dist\\Agent.exe enroll {role} CODE";
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"The {role} service isn't enrolled yet (normal after a fresh database or reset-db.bat).");
+            Console.ResetColor();
+            Console.WriteLine();
+            Console.WriteLine($"  1. In the app, log in as the commander > Settings > create an invite with role '{char.ToUpper(role[0]) + role[1..]}'.");
+            Console.WriteLine($"  2. In the IncidentCommand folder run:  {cmd}");
+            Console.WriteLine("  3. Start the services again:  start-services.bat");
+            Console.WriteLine();
+            Console.WriteLine("Press Enter to close.");
+            Console.ReadLine();
+            Environment.Exit(2);
+        }
 
         Conn = Stdb.Connect(token,
             onConnect: (c, id, _) =>
