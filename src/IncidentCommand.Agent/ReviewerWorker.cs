@@ -65,6 +65,18 @@ public sealed class ReviewerWorker
         return sb.ToString();
     }
 
+    /// The reply is grammar-constrained to exactly this shape.
+    static readonly JsonObject VerdictSchema = new()
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject
+        {
+            ["risk"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("None", "Caution", "Danger") },
+            ["reasons"] = new JsonObject { ["type"] = "string" },
+        },
+        ["required"] = new JsonArray("risk", "reasons"),
+    };
+
     void Start(DbConnection conn, string kind, ulong id, ulong incidentId, string key, string item)
     {
         var configured = "";
@@ -81,11 +93,9 @@ public sealed class ReviewerWorker
             string reasons = "The reviewer's answer could not be read, so treat this with caution.";
             try
             {
-                var reply = await _model.ChatAsync(model, Prompts.ReviewerSystem, item, tools: null, temperature: 0, maxTokens: Settings.Current.Ai.ReviewerMaxTokens);
-                var text = reply.Content ?? "";
-                var start = text.IndexOf('{');
-                var end = text.LastIndexOf('}');
-                if (start >= 0 && end > start && JsonNode.Parse(text[start..(end + 1)]) is JsonObject o)
+                var reply = await _model.ChatAsync(model, Prompts.ReviewerSystem, item, tools: null, temperature: 0,
+                    maxTokens: Settings.Current.Ai.ReviewerMaxTokens, responseSchema: VerdictSchema);
+                if (ModelClient.ParseLenient(reply.Content) is JsonObject o)
                 {
                     if (Enum.TryParse<Risk>(o["risk"]?.ToString(), true, out var r)) risk = r;
                     reasons = o["reasons"]?.ToString() ?? reasons;

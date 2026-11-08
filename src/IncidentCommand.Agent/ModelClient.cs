@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using IncidentCommand.Client;
@@ -27,9 +28,14 @@ public sealed class ModelClient
     static readonly Regex Think = new(@"<think>.*?</think>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
 
     /// modelId: the LM Studio model ID (see AiNames.Resolve).
+    /// tools: the tools this agent may call. In "json" mode (the default) they become a JSON schema the reply is
+    ///   constrained to ({"calls": [...]}); in "native" mode they're sent as OpenAI tool definitions.
+    /// responseSchema: constrain a plain reply (no tools) to this JSON schema, e.g. the reviewer's verdict.
     public async Task<ModelReply> ChatAsync(string modelId, string system, string user,
-                                            JsonArray? tools = null, double temperature = 0.2, int maxTokens = 2048)
+                                            JsonArray? tools = null, double temperature = 0.2, int maxTokens = 2048,
+                                            JsonObject? responseSchema = null)
     {
+        var mode = Settings.Current.Ai.Models.FirstOrDefault(m => m.Id == modelId)?.ToolMode ?? "json";
         var body = new JsonObject
         {
             ["model"] = modelId,
@@ -41,7 +47,9 @@ public sealed class ModelClient
                 new JsonObject { ["role"] = "user", ["content"] = user },
             },
         };
-        if (tools != null) { body["tools"] = tools; body["tool_choice"] = "auto"; }
+        if (tools != null && mode == "native") { body["tools"] = tools; body["tool_choice"] = "auto"; }
+        else if (tools != null) body["response_format"] = Format("tool_calls", CallsSchema(tools));
+        else if (responseSchema != null) body["response_format"] = Format("reply", responseSchema);
 
         using var resp = await _http.PostAsync("chat/completions",
             new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"));
@@ -73,18 +81,101 @@ public sealed class ModelClient
         catch { return new JsonObject(); }
     }
 
+    static JsonObject Format(string name, JsonObject schema) => new()
+    {
+        ["type"] = "json_schema",
+        ["json_schema"] = new JsonObject { ["name"] = name, ["strict"] = true, ["schema"] = schema },
+    };
+
+    /// {"calls": [ {"tool": "<name>", "arguments": {<that tool's parameters>}} , ... ]}
+    /// built from the same tool definitions, so both modes share one source of truth.
+    static JsonObject CallsSchema(JsonArray tools)
+    {
+        var variants = new JsonArray();
+        foreach (var t in tools)
+        {
+            var fn = t!["function"]!;
+            variants.Add(new JsonObject
+            {
+                ["type"] = "object",
+                ["properties"] = new JsonObject
+                {
+                    ["tool"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray(fn["name"]!.GetValue<string>()) },
+                    ["arguments"] = fn["parameters"]!.DeepClone(),
+                },
+                ["required"] = new JsonArray("tool", "arguments"),
+            });
+        }
+        return new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["calls"] = new JsonObject
+                {
+                    ["type"] = "array", ["minItems"] = 1, ["maxItems"] = 6,
+                    ["items"] = new JsonObject { ["anyOf"] = variants },
+                },
+            },
+            ["required"] = new JsonArray("calls"),
+        };
+    }
+
+    static readonly JsonDocumentOptions Lenient = new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip };
+
+    /// Parses the first JSON object/array in `text`, repairing what small models commonly break:
+    /// closing brackets out of order, missing or extra closers, a truncated string, trailing commas.
+    public static JsonNode? ParseLenient(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        int a = text.IndexOf('{'), b = text.IndexOf('[');
+        int start = a < 0 ? b : b < 0 ? a : Math.Min(a, b);
+        if (start < 0) return null;
+
+        var sb = new StringBuilder();
+        var stack = new Stack<char>();
+        bool inStr = false, esc = false;
+        for (int i = start; i < text.Length; i++)
+        {
+            char c = text[i];
+            if (inStr)
+            {
+                sb.Append(c);
+                if (esc) esc = false;
+                else if (c == '\\') esc = true;
+                else if (c == '"') inStr = false;
+                continue;
+            }
+            switch (c)
+            {
+                case '"': inStr = true; sb.Append(c); break;
+                case '{': stack.Push('}'); sb.Append(c); break;
+                case '[': stack.Push(']'); sb.Append(c); break;
+                case '}':
+                case ']':
+                    if (stack.Count == 0) break;                                   // stray closer: drop
+                    if (stack.Peek() == c) sb.Append(stack.Pop());
+                    else if (stack.Contains(c)) { while (stack.Peek() != c) sb.Append(stack.Pop()); sb.Append(stack.Pop()); }
+                    break;                                                         // wrong closer: drop
+                default: sb.Append(c); break;
+            }
+            if (stack.Count == 0 && sb.Length > 0) break;                          // root closed
+        }
+        if (inStr) sb.Append('"');
+        while (stack.Count > 0) sb.Append(stack.Pop());
+        try { return JsonNode.Parse(sb.ToString(), documentOptions: Lenient); }
+        catch { return null; }
+    }
+
     /// Small models sometimes write tool calls as JSON in the message text. Accepts
     /// {"tool": "...", "arguments": {...}}, {"calls": [ ... ]}, or a bare plan {"reasoning": ..., "steps": [...]}.
     public static List<ToolCall> ToolCallsFromContent(string? content, string? bareStepsTool = null)
     {
         var found = new List<ToolCall>();
         if (string.IsNullOrWhiteSpace(content)) return found;
-        var start = content.IndexOf('{');
-        var end = content.LastIndexOf('}');
-        if (start < 0 || end <= start) return found;
         try
         {
-            if (JsonNode.Parse(content[start..(end + 1)]) is not JsonObject o) return found;
+            if (ParseLenient(content) is not JsonObject o) return found;
             void One(JsonObject c)
             {
                 var name = c["tool"]?.ToString() ?? c["name"]?.ToString();

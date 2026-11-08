@@ -7,6 +7,11 @@ public sealed class AiModelOption
 {
     public string Name { get; set; } = "";
     public string Id { get; set; } = "";
+
+    /// "json" (default): LM Studio's structured output. The reply is grammar-constrained to valid JSON in our
+    ///   schema, so small models can't produce broken tool calls. Works with any GGUF model.
+    /// "native": OpenAI-style tool calls. Only for models whose LM Studio card shows tool-use support.
+    public string ToolMode { get; set; } = "json";
 }
 
 /// The local LM Studio server (OpenAI-compatible). Everything runs on this laptop.
@@ -55,14 +60,36 @@ public sealed class Settings
     public static Settings Current => _current ??= Load();
     public static string FilePath => Path.Combine(AppPaths.Root, "settings.json");
 
-    static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
+    static readonly JsonSerializerOptions Json = new()
+    {
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true,          // hand edits with different casing still load
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+    };
 
+    /// An empty or broken settings.json never stops the app: it's set aside as settings.json.bad-<time>
+    /// and replaced with defaults, so you can copy your values back from it.
     static Settings Load()
     {
         Directory.CreateDirectory(AppPaths.Root);
-        var s = File.Exists(FilePath)
-            ? JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings()
-            : new Settings();
+        Settings? s = null;
+        if (File.Exists(FilePath))
+        {
+            var text = File.ReadAllText(FilePath);
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                try { s = JsonSerializer.Deserialize<Settings>(text, Json); }
+                catch (JsonException) { /* handled below */ }
+            }
+            if (s == null)
+            {
+                try { File.Copy(FilePath, $"{FilePath}.bad-{DateTime.Now:yyyyMMdd-HHmmss}", overwrite: true); } catch { }
+            }
+        }
+        s ??= new Settings();
+        s.Ai ??= new AiSettings();
+        s.Ai.Models ??= new AiSettings().Models;
         try { File.WriteAllText(FilePath, JsonSerializer.Serialize(s, Json)); } catch { /* read-only is fine */ }
         return s;
     }

@@ -63,7 +63,7 @@ public sealed class AgentWorker
             try
             {
                 var reply = await _model.ChatAsync(model, Prompts.AgentSystem,
-                    $"{context}\n\n## The responder asks\n{ask}", Tools(), maxTokens: Settings.Current.Ai.AgentMaxTokens);
+                    $"{context}\n\n## The responder asks\n{ask}", Tools(hosts), maxTokens: Settings.Current.Ai.AgentMaxTokens);
                 _runner.Post(c => Apply(c, requestId, incidentId, reply, label, hosts));
             }
             catch (Exception ex)
@@ -149,12 +149,24 @@ public sealed class AgentWorker
 
     // ---------- Tools ----------
 
-    static JsonArray Tools()
+    /// The catalog kinds and the registered hosts are listed as fixed choices, so in "json" mode the model
+    /// literally cannot write an unknown action or invent a host name. With no hosts, only "answer" is offered.
+    static JsonArray Tools(HashSet<string> hosts)
     {
+        JsonObject OneOf(string description, IEnumerable<string> values) => new()
+        {
+            ["type"] = "string", ["description"] = description,
+            ["enum"] = new JsonArray(values.Select(v => (JsonNode)v!).ToArray()),
+        };
+        var answer = ModelClient.Tool("answer", "Reply to the responder without proposing actions.",
+            ModelClient.Obj(new JsonObject { ["text"] = ModelClient.Str("Your answer, plain language.") }, "text"));
+        if (hosts.Count == 0) return new JsonArray { answer };
+
+        var hostChoice = OneOf("A registered host, exactly as written.", hosts.OrderBy(h => h));
         var step = ModelClient.Obj(new JsonObject
         {
-            ["kind"] = ModelClient.Str("One of the catalog kinds, exactly as written."),
-            ["host"] = ModelClient.Str("A host from 'Hosts you may target', exactly as written."),
+            ["kind"] = OneOf("A catalog action.", Catalog.Keys),
+            ["host"] = hostChoice.DeepClone(),
             ["params"] = new JsonObject { ["type"] = "object", ["description"] = "The kind's parameters as string values, e.g. {\"log\":\"auth\",\"lines\":\"200\"}. {} if none." },
             ["rationale"] = ModelClient.Str("One or two sentences: why this step, citing evidence ids."),
         }, "kind", "host", "params", "rationale");
@@ -167,12 +179,11 @@ public sealed class AgentWorker
                     ["reasoning"] = ModelClient.Str("What you believe happened and what you still need to know. Plain language, under 120 words."),
                     ["steps"] = new JsonObject { ["type"] = "array", ["items"] = step, ["maxItems"] = 6 },
                 }, "reasoning", "steps")),
-            ModelClient.Tool("answer", "Reply to the responder without proposing actions.",
-                ModelClient.Obj(new JsonObject { ["text"] = ModelClient.Str("Your answer, plain language.") }, "text")),
+            answer,
             ModelClient.Tool("suggest_command", "Put an exact shell command in the human-only terminal's suggestion list, for one registered host. Use when the responder asks for a command, or the catalog can't do what they want. The human reviews and runs it; it never runs automatically.",
                 ModelClient.Obj(new JsonObject
                 {
-                    ["host"] = ModelClient.Str("A registered host."),
+                    ["host"] = hostChoice.DeepClone(),
                     ["text"] = ModelClient.Str("The exact command."),
                     ["rationale"] = ModelClient.Str("Why."),
                 }, "host", "text", "rationale")),
@@ -261,6 +272,19 @@ public sealed class AgentWorker
             $"({string.Join("; ", suggested)}). Check the reviewer's warning, then copy it into the terminal and run it yourself.";
         if (skipped.Count > 0)
             terminalNote += $" (Skipped {skipped.Count} suggestion(s): {string.Join("; ", skipped)}.)";
+
+        // If the reply looked like a tool call but couldn't be read, say so clearly AND keep the raw reply,
+        // so it can be copied out for debugging.
+        if (!handled && suggested.Count == 0 && reply.Content?.TrimStart().StartsWith("{") == true)
+        {
+            var raw = reply.Content!.Trim();
+            if (raw.Length > 4000) raw = raw[..4000] + " …[truncated]";
+            conn.Reducers.FailRequest(requestId,
+                $"its reply couldn't be read as a plan, so nothing was proposed. Ask again, or pick a different agent " +
+                $"model in Settings > AI. Raw model reply ({label}):\n\n{raw}");
+            ServiceRunner.Log($"Unreadable reply for request {requestId}: {raw}");
+            return;
+        }
 
         if (!handled)
         {

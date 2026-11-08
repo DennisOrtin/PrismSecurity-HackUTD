@@ -3,6 +3,7 @@ obj/
 dist/
 .vs/
 *.user
+dbOutput.dat
 # Never commit keys, vaults or tokens
 sim/keys/authorized_keys
 *.vault
