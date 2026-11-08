@@ -52,7 +52,7 @@ public partial class MainVm : PageVm
         }
 
         var lastAi = Conn.Db.MessageView.Iter()
-            .Where(m => m.IncidentId == id && m.AuthorKind == AuthorKind.AI)
+            .Where(m => m.IncidentId == id && m.AuthorKind == AuthorKind.Assistant)
             .OrderByDescending(m => m.Id).Select(m => m.Text).FirstOrDefault();
         NextStep = lastAi == null ? "" : "AI recommends: " + (lastAi.Length > 220 ? lastAi[..220] + "…" : lastAi);
 

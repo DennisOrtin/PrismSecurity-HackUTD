@@ -9,7 +9,7 @@ using SpacetimeDB;
 [SpacetimeDB.Type] public enum Tier { ReadOnly, Containment, Destructive }
 [SpacetimeDB.Type] public enum ActionStatus { Proposed, Approved, Denied, Running, Succeeded, Failed, Stale }
 [SpacetimeDB.Type] public enum Phase { Detected, Analysis, Containment, Eradication, Recovery, Closed }
-[SpacetimeDB.Type] public enum AuthorKind { Human, AI, System }
+[SpacetimeDB.Type] public enum AuthorKind { Human, Assistant, System }   // "Assistant", not "AI": codegen re-cases acronyms
 [SpacetimeDB.Type] public enum ScopeLevel { User, Application, System, Network }
 [SpacetimeDB.Type] public enum DataStatus { Unknown, Secure, Encrypted, Exfiltrated, EncryptedAndExfiltrated }
 [SpacetimeDB.Type] public enum DataClass { Credentials, PersonalData, Financial, IntellectualProperty, Operational }
@@ -38,6 +38,9 @@ public partial struct PlannedStep
 [SpacetimeDB.Table(Accessor = "User")]
 public partial struct User
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey] public Identity Identity;
     [SpacetimeDB.Unique] public string Username;   // assigned by the module, never updated
     public string DisplayName;
@@ -72,6 +75,9 @@ public partial struct Config
 [SpacetimeDB.Table(Accessor = "SshHost")]
 public partial struct SshHost
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey] public string Name;      // e.g. "web-01"
     public string Address;
     public uint Port;
@@ -83,6 +89,9 @@ public partial struct SshHost
 [SpacetimeDB.Table(Accessor = "Incident")]
 public partial struct Incident
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Id;
     public string Title;
     public Phase Phase;
@@ -95,6 +104,9 @@ public partial struct Incident
 [SpacetimeDB.Table(Accessor = "TimelineEntry")]
 public partial struct TimelineEntry
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Id;
     [SpacetimeDB.Index.BTree] public ulong IncidentId;
     public Timestamp At;
@@ -108,6 +120,9 @@ public partial struct TimelineEntry
 [SpacetimeDB.Table(Accessor = "Asset")]
 public partial struct Asset
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Id;
     [SpacetimeDB.Index.BTree] public ulong IncidentId;
     public string Host;
@@ -123,6 +138,9 @@ public partial struct Asset
 [SpacetimeDB.Table(Accessor = "NetEvent")]
 public partial struct NetEvent
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Id;
     [SpacetimeDB.Index.BTree] public ulong IncidentId;
     public string Host;
@@ -137,6 +155,9 @@ public partial struct NetEvent
 [SpacetimeDB.Table(Accessor = "AgentRequest")]
 public partial struct AgentRequest
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Id;
     [SpacetimeDB.Index.BTree] public ulong IncidentId;
     public string FromUser;
@@ -148,6 +169,9 @@ public partial struct AgentRequest
 [SpacetimeDB.Table(Accessor = "Plan")]
 public partial struct Plan
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Id;
     [SpacetimeDB.Index.BTree] public ulong IncidentId;
     public ulong RequestId;
@@ -160,6 +184,9 @@ public partial struct Plan
 [SpacetimeDB.Table(Accessor = "ResponseAction")]
 public partial struct ResponseAction
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Id;
     [SpacetimeDB.Index.BTree] public ulong IncidentId;
     [SpacetimeDB.Index.BTree] public ulong PlanId;     // 0 = proposed by a human, outside a plan
@@ -182,6 +209,9 @@ public partial struct ResponseAction
 [SpacetimeDB.Table(Accessor = "Review")]
 public partial struct Review
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Id;
     public string TargetKind;                          // "action" or "suggestion"
     public ulong TargetId;
@@ -193,6 +223,9 @@ public partial struct Review
 [SpacetimeDB.Table(Accessor = "SuggestedCommand")]
 public partial struct SuggestedCommand
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Id;
     [SpacetimeDB.Index.BTree] public ulong IncidentId;
     public string Host;
@@ -204,6 +237,9 @@ public partial struct SuggestedCommand
 [SpacetimeDB.Table(Accessor = "Message")]
 public partial struct Message
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Id;
     [SpacetimeDB.Index.BTree] public ulong IncidentId;
     public string Author;
@@ -217,6 +253,9 @@ public partial struct Message
 [SpacetimeDB.Table(Accessor = "TerminalCommand")]
 public partial struct TerminalCommand
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Id;
     public string Host;
     public string Command;
@@ -229,6 +268,9 @@ public partial struct TerminalCommand
 [SpacetimeDB.Table(Accessor = "TerminalOutput")]
 public partial struct TerminalOutput
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Id;
     [SpacetimeDB.Index.BTree] public ulong CommandId;
     public string Chunk;
@@ -239,6 +281,9 @@ public partial struct TerminalOutput
 [SpacetimeDB.Table(Accessor = "AuditEntry")]
 public partial struct AuditEntry
 {
+    /// Always 0. Views can't scan tables (no Iter in a ViewContext), only use indexes,
+    /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
+    [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Seq;
     public Timestamp At;
     public Identity Actor;

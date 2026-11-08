@@ -29,15 +29,15 @@ public partial class TimelineVm : PageVm
         Entries.Clear();
         foreach (var e in Conn.Db.TimelineView.Iter().Where(e => e.IncidentId == id).OrderByDescending(e => e.Id))
             Entries.Add(new EntryRow(e.Id, Stdb.Ago(e.At), e.Category, e.Text,
-                e.AuthorKind == AuthorKind.AI ? $"{e.Author} (AI)" : e.Author,
-                e.AuthorKind == AuthorKind.AI && !e.Accepted,
-                e.AuthorKind == AuthorKind.AI ? Warning : Neutral));
+                e.AuthorKind == AuthorKind.Assistant ? $"{e.Author} (AI)" : e.Author,
+                e.AuthorKind == AuthorKind.Assistant && !e.Accepted,
+                e.AuthorKind == AuthorKind.Assistant ? Warning : Neutral));
 
         Chat.Clear();
         foreach (var m in Conn.Db.MessageView.Iter().Where(m => m.IncidentId == id).OrderBy(m => m.Id))
             Chat.Add(new ChatRow(Stdb.Ago(m.At),
-                m.AuthorKind == AuthorKind.AI ? $"{m.Author} (AI)" : m.Author, m.Text,
-                m.AuthorKind == AuthorKind.AI ? Warning : m.AuthorKind == AuthorKind.System ? Danger : Neutral));
+                m.AuthorKind == AuthorKind.Assistant ? $"{m.Author} (AI)" : m.Author, m.Text,
+                m.AuthorKind == AuthorKind.Assistant ? Warning : m.AuthorKind == AuthorKind.System ? Danger : Neutral));
     }
 
     [RelayCommand]

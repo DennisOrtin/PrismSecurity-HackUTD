@@ -255,7 +255,7 @@ public static partial class Module
         }
 
         ctx.Db.AgentRequest.Id.Update(req with { Status = RequestStatus.Planned });
-        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = req.IncidentId, Author = u.Username, AuthorKind = AuthorKind.AI, Text = reasoning, At = ctx.Timestamp });
+        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = req.IncidentId, Author = u.Username, AuthorKind = AuthorKind.Assistant, Text = reasoning, At = ctx.Timestamp });
         WriteAudit(ctx, u.Username, "submit_plan", Payload("plan", plan.Id, "request", requestId, "steps", steps.Count));
     }
 
@@ -266,7 +266,7 @@ public static partial class Module
         var u = Require(ctx, Role.Agent);
         var req = ctx.Db.AgentRequest.Id.Find(requestId) ?? throw new Exception("No such request.");
         ctx.Db.AgentRequest.Id.Update(req with { Status = RequestStatus.Planned });
-        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = req.IncidentId, Author = u.Username, AuthorKind = AuthorKind.AI, Text = text, At = ctx.Timestamp });
+        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = req.IncidentId, Author = u.Username, AuthorKind = AuthorKind.Assistant, Text = text, At = ctx.Timestamp });
     }
 
     [SpacetimeDB.Reducer]
@@ -297,7 +297,7 @@ public static partial class Module
     public static void ProposeTimelineEntry(ReducerContext ctx, ulong incidentId, string category, string text)
     {
         var u = Require(ctx, Role.Agent);
-        AddEntry(ctx, incidentId, u.Username, AuthorKind.AI, category, text, false);
+        AddEntry(ctx, incidentId, u.Username, AuthorKind.Assistant, category, text, false);
     }
 
     [SpacetimeDB.Reducer]
@@ -327,7 +327,7 @@ public static partial class Module
     public static void PostAiMessage(ReducerContext ctx, ulong incidentId, string text)
     {
         var u = Require(ctx, Role.Agent, Role.Reviewer);
-        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = incidentId, Author = u.Username, AuthorKind = AuthorKind.AI, Text = text, At = ctx.Timestamp });
+        ctx.Db.Message.Insert(new Message { Id = 0, IncidentId = incidentId, Author = u.Username, AuthorKind = AuthorKind.Assistant, Text = text, At = ctx.Timestamp });
     }
 
     /// Reviewer can only ADD warnings. It never blocks or approves.

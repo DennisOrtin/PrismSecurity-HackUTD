@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>IncidentCommand.Client</RootNamespace>
+    <!-- DPAPI is Windows-only, and so is this whole system. Silence the cross-platform warnings. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <!-- Pin this to the client SDK version that matches your 2.14.1 server. -->
