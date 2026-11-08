@@ -67,6 +67,9 @@ public static partial class Module
     static readonly Dictionary<string, CatalogEntry> Catalog = new()
     {
         ["collect_logs"]     = new(Tier.ReadOnly,    new[] { "log", "lines" }),
+        ["check_egress"]     = new(Tier.ReadOnly,    new[] { "ip", "port" }),           // verifies containment worked
+        ["quarantine_file"]  = new(Tier.Containment, new[] { "path" }),                 // eradication: implants, cron, keys
+        ["restore_from_backup"] = new(Tier.Containment, new[] { "dir" }),               // recovery: encrypted data
         ["follow_logs"]      = new(Tier.ReadOnly,    new[] { "log" }),
         ["list_processes"]   = new(Tier.ReadOnly,    new string[0]),
         ["list_connections"] = new(Tier.ReadOnly,    new string[0]),
@@ -119,6 +122,12 @@ public static partial class Module
                 case "ip":
                     if (!IsIPv4(p.Value)) throw new Exception("ip must be an IPv4 address.");
                     if (p.Value == cfg.ResponderAddress) throw new Exception("Refusing to target the responder laptop.");
+                    break;
+                case "port":
+                    if (!int.TryParse(p.Value, out var port) || port < 1 || port > 65535) throw new Exception("port must be 1-65535.");
+                    break;
+                case "path":
+                    if (!IsSafePath(p.Value) || p.Value.EndsWith('/')) throw new Exception("path must be an absolute file path of letters, digits, / _ . -");
                     break;
                 case "dir":
                     if (!IsSafePath(p.Value)) throw new Exception("dir must be an absolute path of letters, digits, / _ . -");

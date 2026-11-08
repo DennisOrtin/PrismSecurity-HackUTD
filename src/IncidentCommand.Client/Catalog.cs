@@ -18,6 +18,9 @@ public static class CatalogText
         "block_ip" => $"Block an IP address on {host}",
         "isolate_host" => $"Isolate {host} from the network",
         "shutdown_host" => $"Shut down {host}",
+        "check_egress" => $"Check whether {host} can still reach an address",
+        "quarantine_file" => $"Quarantine a file on {host}",
+        "restore_from_backup" => $"Restore data on {host} from backup",
         _ => $"{kind} on {host}",
     };
 }

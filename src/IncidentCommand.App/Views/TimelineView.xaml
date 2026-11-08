@@ -72,6 +72,7 @@
       </DockPanel>
       <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Muted}" Text="The AI proposes; it can never act. Everything it suggests goes to the Actions screen for a human decision." />
       <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
         <ItemsControl ItemsSource="{Binding Chat}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
@@ -86,6 +87,26 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
+
+        <!-- Where the "re-planned N times" notice used to be: Continue shows the prepared step instantly. -->
+        <Border BorderBrush="{StaticResource WarningBrush}" BorderThickness="2">
+          <Border.Style>
+            <Style TargetType="Border" BasedOn="{StaticResource Card}">
+              <Setter Property="Visibility" Value="Collapsed" />
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding HasHeld}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Border.Style>
+          <StackPanel>
+            <TextBlock Text="{Binding HeldText}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,10" />
+            <StackPanel Orientation="Horizontal">
+              <ui:Button Content="Continue" Appearance="Primary" Margin="0,0,8,0" Command="{Binding ContinueAgentCommand}" />
+              <ui:Button Content="Stop" Command="{Binding StopAgentCommand}" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+        </StackPanel>
       </ScrollViewer>
     </DockPanel>
   </Grid>

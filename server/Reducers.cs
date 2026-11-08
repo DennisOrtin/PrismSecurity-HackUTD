@@ -203,6 +203,7 @@ public static partial class Module
             Id = 0, Title = title.Trim(), Phase = Phase.Detected, Severity = severity,
             OpenedAt = ctx.Timestamp, OpenedBy = u.Username, Summary = "",
             AiSummary = "", Classification = "", AiUpdatedAt = ctx.Timestamp,
+            ClosingSummary = "", ClosedAtMicros = 0,
         });
         AddEntry(ctx, inc.Id, u.Username, AuthorKind.System, "Detection", $"Incident opened by {u.Username}: {title}", true);
         WriteAudit(ctx, u.Username, "open_incident", Payload("id", inc.Id, "title", title, "severity", severity));
@@ -213,9 +214,61 @@ public static partial class Module
     {
         var u = Require(ctx, Role.Commander);
         var inc = ctx.Db.Incident.Id.Find(incidentId) ?? throw new Exception("No such incident.");
-        ctx.Db.Incident.Id.Update(inc with { Phase = phase });
-        AddEntry(ctx, incidentId, u.Username, AuthorKind.System, phase.ToString(), $"Phase changed to {phase} by {u.Username}", true);
-        WriteAudit(ctx, u.Username, "set_phase", Payload("id", incidentId, "phase", phase));
+        ChangePhase(ctx, inc, phase, u.Username, "");
+    }
+
+    /// One place for every phase change (Overview buttons, Timeline, accepted AI entries).
+    /// Closing snapshots the AI summary as the report and asks the agent for the full post-incident report;
+    /// reopening (any phase other than Closed) makes the incident current again.
+    static void ChangePhase(ReducerContext ctx, Incident inc, Phase phase, string username, string via)
+    {
+        if (inc.Phase == phase) return;
+        var updated = inc with { Phase = phase };
+        if (phase == Phase.Closed)
+        {
+            updated = updated with
+            {
+                ClosedAtMicros = ctx.Timestamp.MicrosecondsSinceUnixEpoch,
+                ClosingSummary = string.IsNullOrWhiteSpace(inc.ClosingSummary) ? (inc.AiSummary ?? "") : inc.ClosingSummary,
+            };
+            // Nothing should keep running against a closed incident.
+            foreach (var a in ctx.Db.ResponseAction.IncidentId.Filter(inc.Id).Where(a => a.Status == ActionStatus.Proposed).ToList())
+                ctx.Db.ResponseAction.Id.Update(a with { Status = ActionStatus.Stale, UpdatedAt = ctx.Timestamp });
+            foreach (var r in ctx.Db.AgentRequest.IncidentId.Filter(inc.Id)
+                         .Where(r => r.Status is RequestStatus.Pending or RequestStatus.Ready).ToList())
+                ctx.Db.AgentRequest.Id.Update(r with { Status = RequestStatus.Discarded });
+            ctx.Db.AgentRequest.Insert(new AgentRequest
+            {
+                Id = 0, IncidentId = inc.Id, FromUser = "system", At = ctx.Timestamp, Status = RequestStatus.Pending,
+                Text = "The incident has been closed. Write the post-incident report.", Model = "", Depth = 0,
+                Purpose = "closing_summary", Held = false, Released = false, HeldResult = "",
+            });
+        }
+        else if (inc.Phase == Phase.Closed)
+        {
+            updated = updated with { ClosedAtMicros = 0 };
+        }
+        ctx.Db.Incident.Id.Update(updated);
+        var text = inc.Phase == Phase.Closed ? $"Incident reopened ({phase}) by {username}" : $"Phase changed to {phase} by {username}";
+        AddEntry(ctx, inc.Id, username, AuthorKind.System, phase.ToString(), via.Length > 0 ? $"{text} ({via})" : text, true);
+        WriteAudit(ctx, username, "set_phase", Payload("id", inc.Id, "phase", phase, "via", via));
+    }
+
+    /// Agent: the post-incident report, written after the incident is closed.
+    [SpacetimeDB.Reducer]
+    public static void SaveClosingSummary(ReducerContext ctx, ulong requestId, string text, string modelLabel)
+    {
+        var u = Require(ctx, Role.Agent);
+        var req = ctx.Db.AgentRequest.Id.Find(requestId) ?? throw new Exception("No such request.");
+        var inc = ctx.Db.Incident.Id.Find(req.IncidentId) ?? throw new Exception("No such incident.");
+        ctx.Db.Incident.Id.Update(inc with { ClosingSummary = text });
+        ctx.Db.AgentRequest.Id.Update(req with { Status = RequestStatus.Planned });
+        ctx.Db.Message.Insert(new Message
+        {
+            Id = 0, IncidentId = req.IncidentId, Author = u.Username, AuthorKind = AuthorKind.Assistant,
+            Text = "Post-incident report saved under Previous incidents.", At = ctx.Timestamp, ModelLabel = modelLabel,
+        });
+        WriteAudit(ctx, u.Username, "save_closing_summary", Payload("incident", req.IncidentId));
     }
 
     [SpacetimeDB.Reducer]
@@ -250,10 +303,7 @@ public static partial class Module
             {
                 if (u.Role != Role.Commander)
                     throw new Exception($"Accepting this moves the incident to {phase}. Only the incident commander can change the phase.");
-                ctx.Db.Incident.Id.Update(inc with { Phase = phase });
-                AddEntry(ctx, e.IncidentId, u.Username, AuthorKind.System, phase.ToString(),
-                         $"Phase changed to {phase} by {u.Username} (accepted an AI timeline entry)", true);
-                WriteAudit(ctx, u.Username, "set_phase", Payload("id", e.IncidentId, "phase", phase, "via", $"timeline entry {entryId}"));
+                ChangePhase(ctx, inc, phase, u.Username, "accepted an AI timeline entry");
             }
         }
 
@@ -299,7 +349,7 @@ public static partial class Module
         ctx.Db.AgentRequest.Insert(new AgentRequest
         {
             Id = 0, IncidentId = incidentId, FromUser = u.Username, Text = text, At = ctx.Timestamp,
-            Status = RequestStatus.Pending, Model = model, Depth = 0,
+            Status = RequestStatus.Pending, Model = model, Depth = 0, Purpose = "", Held = false, Released = false, HeldResult = "",
         });
         WriteAudit(ctx, u.Username, "submit_prompt", Payload("incident", incidentId, "text", text, "model", model));
     }
@@ -588,20 +638,14 @@ public static partial class Module
         byte depth = (byte)((req?.Depth ?? 0) + 1);
         var model = req?.Model ?? "";
         var incidentId = plan.Value.IncidentId;
-        if (depth > MaxAutoFollowUps)
-        {
-            ctx.Db.Message.Insert(new Message
-            {
-                Id = 0, IncidentId = incidentId, Author = "system", AuthorKind = AuthorKind.System, At = ctx.Timestamp, ModelLabel = "",
-                Text = $"The agent has re-planned {MaxAutoFollowUps} times on its own. Ask it to continue when you're ready.",
-            });
-            return;
-        }
+        // Every MaxAutoFollowUps-th automatic round is HELD: the agent prepares it in the background, and the
+        // responder sees a Continue / Stop prompt. Continue shows it instantly; Stop discards it.
+        bool held = depth % MaxAutoFollowUps == 0;
         ctx.Db.AgentRequest.Insert(new AgentRequest
         {
             Id = 0, IncidentId = incidentId, FromUser = "system", At = ctx.Timestamp, Status = RequestStatus.Pending,
             Text = "All steps of your last plan have finished. Review their output and decide the next steps.",
-            Model = model, Depth = depth,
+            Model = model, Depth = depth, Purpose = "", Held = held, Released = false, HeldResult = "",
         });
     }
 
@@ -618,21 +662,33 @@ public static partial class Module
             ctx.Db.AgentRequest.Insert(new AgentRequest
             {
                 Id = 0, IncidentId = incidentId, FromUser = "system", Text = $"New severity-{severity} event on {host} ({source}). Re-assess.",
-                At = ctx.Timestamp, Status = RequestStatus.Pending, Model = "", Depth = 0,
+                At = ctx.Timestamp, Status = RequestStatus.Pending, Model = "", Depth = 0, Purpose = "", Held = false, Released = false, HeldResult = "",
             });
     }
 
     // ===================== Human terminal =====================
 
     [SpacetimeDB.Reducer]
-    public static void RunTerminalCommand(ReducerContext ctx, string host, string command)
+    public static void RunTerminalCommand(ReducerContext ctx, ulong incidentId, string host, string command)
     {
         var u = Require(ctx, Role.Commander, Role.Responder);
         if (ctx.Db.SshHost.Name.Find(host) is null) throw new Exception($"Unknown host '{host}'.");
         if (command.Length is < 1 or > 2000) throw new Exception("Command must be 1-2000 characters.");
+
+        // If this is an AI suggestion being run, link it (so the agent continues when it finishes) and clear it.
+        ulong suggestionId = 0;
+        var trimmed = command.Trim();
+        foreach (var sg in ctx.Db.SuggestedCommand.IncidentId.Filter(incidentId)
+                     .Where(x => !x.Dismissed && x.Host == host && x.Text.Trim() == trimmed).ToList())
+        {
+            suggestionId = sg.Id;
+            ctx.Db.SuggestedCommand.Id.Update(sg with { Dismissed = true });
+        }
+
         var row = ctx.Db.TerminalCommand.Insert(new TerminalCommand
         {
-            Id = 0, Host = host, Command = command, IssuedBy = u.Username, Status = TerminalStatus.Queued, ExitCode = 0, At = ctx.Timestamp,
+            Id = 0, IncidentId = incidentId, SuggestionId = suggestionId, Host = host, Command = command, IssuedBy = u.Username,
+            Status = TerminalStatus.Queued, ExitCode = 0, At = ctx.Timestamp,
         });
         WriteAudit(ctx, u.Username, "run_terminal_command", Payload("id", row.Id, "host", host, "command", command));
     }
@@ -660,6 +716,72 @@ public static partial class Module
         var c = ctx.Db.TerminalCommand.Id.Find(commandId) ?? throw new Exception("No such command.");
         ctx.Db.TerminalCommand.Id.Update(c with { Status = failed ? TerminalStatus.Failed : TerminalStatus.Done, ExitCode = exitCode });
         WriteAudit(ctx, u.Username, "finish_terminal_command", Payload("id", commandId, "exit", exitCode));
+
+        // The responder ran one of the agent's suggestions: let the agent read the output and carry on by itself.
+        if (c.SuggestionId != 0 && c.IncidentId != 0)
+        {
+            var open = ctx.Db.Incident.Id.Find(c.IncidentId);
+            if (open is not null && open.Value.Phase != Phase.Closed)
+                ctx.Db.AgentRequest.Insert(new AgentRequest
+                {
+                    Id = 0, IncidentId = c.IncidentId, FromUser = "system", At = ctx.Timestamp, Status = RequestStatus.Pending,
+                    Text = $"The responder ran your suggested command on {c.Host}: `{c.Command}` (exit {exitCode}). " +
+                           "Its output is under 'Human terminal' in the context. Interpret it and decide the next step.",
+                    Model = "", Depth = 0, Purpose = "", Held = false, Released = false, HeldResult = "",
+                });
+        }
+    }
+
+    // ===================== Suggestions =====================
+
+    [SpacetimeDB.Reducer]
+    public static void DismissSuggestion(ReducerContext ctx, ulong suggestionId)
+    {
+        Require(ctx, Role.Commander, Role.Responder);
+        var sg = ctx.Db.SuggestedCommand.Id.Find(suggestionId) ?? throw new Exception("No such suggestion.");
+        ctx.Db.SuggestedCommand.Id.Update(sg with { Dismissed = true });
+    }
+
+    [SpacetimeDB.Reducer]
+    public static void ClearSuggestions(ReducerContext ctx, ulong incidentId)
+    {
+        Require(ctx, Role.Commander, Role.Responder);
+        foreach (var sg in ctx.Db.SuggestedCommand.IncidentId.Filter(incidentId).Where(x => !x.Dismissed).ToList())
+            ctx.Db.SuggestedCommand.Id.Update(sg with { Dismissed = true });
+    }
+
+    // ===================== Held follow-ups (Continue / Stop) =====================
+
+    /// Agent: store the prepared answer for a held request without showing it.
+    [SpacetimeDB.Reducer]
+    public static void StoreHeldResult(ReducerContext ctx, ulong requestId, string result)
+    {
+        Require(ctx, Role.Agent);
+        var req = ctx.Db.AgentRequest.Id.Find(requestId) ?? throw new Exception("No such request.");
+        if (req.Status != RequestStatus.Pending) return;   // discarded meanwhile
+        ctx.Db.AgentRequest.Id.Update(req with { Status = RequestStatus.Ready, HeldResult = result });
+    }
+
+    /// Responder pressed Continue. If the answer is ready the agent applies it at once; otherwise as soon as it is.
+    [SpacetimeDB.Reducer]
+    public static void ReleaseHeld(ReducerContext ctx, ulong requestId)
+    {
+        var u = Require(ctx, Role.Commander, Role.Responder);
+        var req = ctx.Db.AgentRequest.Id.Find(requestId) ?? throw new Exception("No such request.");
+        if (!req.Held || req.Status is not (RequestStatus.Pending or RequestStatus.Ready)) throw new Exception("Nothing is waiting.");
+        ctx.Db.AgentRequest.Id.Update(req with { Released = true });
+        WriteAudit(ctx, u.Username, "continue_agent", Payload("request", requestId));
+    }
+
+    /// Responder pressed Stop: the prepared answer is thrown away, unseen.
+    [SpacetimeDB.Reducer]
+    public static void DiscardHeld(ReducerContext ctx, ulong requestId)
+    {
+        var u = Require(ctx, Role.Commander, Role.Responder);
+        var req = ctx.Db.AgentRequest.Id.Find(requestId) ?? throw new Exception("No such request.");
+        if (!req.Held) throw new Exception("Nothing is waiting.");
+        ctx.Db.AgentRequest.Id.Update(req with { Status = RequestStatus.Discarded, HeldResult = "" });
+        WriteAudit(ctx, u.Username, "stop_agent", Payload("request", requestId));
     }
 
     // ===================== Internal =====================

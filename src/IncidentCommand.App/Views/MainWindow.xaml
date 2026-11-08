@@ -27,6 +27,16 @@
             <TextBlock Text="{Binding UserLine}" Style="{StaticResource Muted}" HorizontalAlignment="Right" />
             <TextBlock Text="{Binding AiLine}" Foreground="{Binding AiBrush}" FontWeight="SemiBold" HorizontalAlignment="Right" />
           </StackPanel>
+          <ui:Button Content="Back to current incident" Margin="0,0,8,0" Command="{Binding BackToCurrentCommand}">
+            <ui:Button.Style>
+              <Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+                <Setter Property="Visibility" Value="Collapsed" />
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding ViewingPast}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </ui:Button.Style>
+          </ui:Button>
           <ui:Button Content="Lock" Command="{Binding LockNowCommand}" />
         </StackPanel>
       </Grid>
@@ -49,11 +59,12 @@
       </DockPanel>
     </Border>
 
-    <TabControl TabStripPlacement="Left" Margin="0,8,0,0" FontSize="16">
+    <TabControl TabStripPlacement="Left" Margin="0,8,0,0" FontSize="16" SelectedIndex="{Binding SelectedTab}">
       <TabItem Header="Overview"><v:OverviewView DataContext="{Binding Overview}" /></TabItem>
       <TabItem Header="{Binding ActionsHeader}"><v:ActionsView DataContext="{Binding Actions}" /></TabItem>
       <TabItem Header="Timeline and AI"><v:TimelineView DataContext="{Binding Timeline}" /></TabItem>
       <TabItem Header="Terminal"><v:TerminalView DataContext="{Binding Terminal}" /></TabItem>
+      <TabItem Header="Previous incidents"><v:PreviousIncidentsView DataContext="{Binding PreviousIncidents}" /></TabItem>
       <TabItem Header="Laptop posture"><v:PostureView DataContext="{Binding Posture}" /></TabItem>
       <TabItem Header="Settings"><v:SettingsView DataContext="{Binding Settings}" /></TabItem>
     </TabControl>

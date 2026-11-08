@@ -93,6 +93,9 @@ public sealed class ParserWorker
             list.Add(new Item("timeline", t.Id, t.IncidentId,
                 $"- timeline {t.Id} [{t.Category}] by {t.Author}{(t.AuthorKind == AuthorKind.Assistant ? " (AI)" : "")}: {AgentWorker.Clip(t.Text, 500)}"));
 
+        var mgmt = Settings.Current.Ai.ManagementAddresses.ToList();
+        foreach (var cfg in conn.Db.ConfigView.Iter()) if (!string.IsNullOrWhiteSpace(cfg.ResponderAddress)) mgmt.Add(cfg.ResponderAddress);
+
         // Actions only once they have finished (their output is the interesting part).
         foreach (var a in conn.Db.ActionView.Iter().Where(a =>
                      (a.Status is ActionStatus.Succeeded or ActionStatus.Failed or ActionStatus.Denied) && Fresh("action", a.Id)))
@@ -100,19 +103,17 @@ public sealed class ParserWorker
             var p = string.Join(", ", a.Params.Select(x => $"{x.Key}={x.Value}"));
             var head = $"- action {a.Id}: {a.Kind} on {a.Host} ({p}) {a.Status}, approved by {a.ApprovedBy}";
             list.Add(new Item("action", a.Id, a.IncidentId,
-                a.Status == ActionStatus.Denied ? head : head + "\n" + AgentWorker.Untrusted($"output of action {a.Id}", AgentWorker.Clip(a.Output, 1500))));
+                a.Status == ActionStatus.Denied ? head : head + "\n" + AgentWorker.Untrusted($"output of action {a.Id}", AgentWorker.Clip(AgentWorker.Annotate(a.Kind, a.Output, mgmt), 1500))));
         }
 
-        // Terminal commands once done. They aren't tied to an incident, so attach them to the open one.
-        var open = conn.Db.IncidentView.Iter().Where(i => i.Phase != Phase.Closed).OrderByDescending(i => i.Id).Select(i => i.Id).FirstOrDefault();
-        if (open != 0)
+        // Terminal commands once done, filed under the incident they were run for.
         {
             var outputs = conn.Db.TerminalOutputView.Iter().ToList();
             foreach (var c in conn.Db.TerminalCommandView.Iter().Where(c =>
                          (c.Status is TerminalStatus.Done or TerminalStatus.Failed) && Fresh("terminal", c.Id)))
             {
                 var output = string.Concat(outputs.Where(o => o.CommandId == c.Id).OrderBy(o => o.Id).Select(o => o.Chunk));
-                list.Add(new Item("terminal", c.Id, open,
+                list.Add(new Item("terminal", c.Id, c.IncidentId,
                     $"- terminal {c.Id}: {c.IssuedBy} ran on {c.Host}: {c.Command}\n" +
                     AgentWorker.Untrusted($"output of terminal {c.Id}", AgentWorker.Clip(output, 1500))));
             }

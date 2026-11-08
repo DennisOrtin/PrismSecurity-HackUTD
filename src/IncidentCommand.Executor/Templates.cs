@@ -28,7 +28,22 @@ public static class Templates
             "follow_logs" => $"tail -n 0 -F {LogPaths[p["log"]]}",
             "list_processes" => "ps -eo pid,user,etime,cmd --sort=start_time",
             "list_connections" => "ss -tunp",
-            "capture_traffic" => $"timeout {int.Parse(p["seconds"])} tcpdump -i any -nn -c 5000 -w /tmp/cap.pcap 2>/dev/null; tcpdump -nn -r /tmp/cap.pcap 2>/dev/null | head -n 200",
+            // "not port 22" leaves out the executor's own SSH sessions, so only real traffic shows.
+            "capture_traffic" => $"timeout {int.Parse(p["seconds"])} tcpdump -i any -nn -c 5000 -w /tmp/cap.pcap not port 22 2>/dev/null; " +
+                                 "echo \"$(tcpdump -nn -r /tmp/cap.pcap 2>/dev/null | wc -l) packets (SSH management traffic excluded)\"; " +
+                                 "tcpdump -nn -r /tmp/cap.pcap 2>/dev/null | head -n 200",
+            // Containment check: can this host still open a connection to that address?
+            "check_egress" => $"if timeout 3 bash -c 'echo > /dev/tcp/{p["ip"]}/{int.Parse(p["port"])}' 2>/dev/null; " +
+                              $"then echo 'REACHABLE: {p["ip"]}:{p["port"]} is still reachable from this host'; " +
+                              $"else echo 'BLOCKED: {p["ip"]}:{p["port"]} cannot be reached from this host'; fi",
+            // Eradication: move a file out of the way (kept for forensics), not delete it.
+            "quarantine_file" => $"test -e {p["path"]} || {{ echo 'not found: {p["path"]}'; exit 1; }}; " +
+                                 $"mkdir -p /var/quarantine && chmod 700 /var/quarantine && " +
+                                 $"mv {p["path"]} /var/quarantine/$(echo {p["path"]} | tr / _) && " +
+                                 $"echo 'quarantined {p["path"]} -> /var/quarantine/'$(echo {p["path"]} | tr / _)",
+            // Recovery: put a directory back from the backup taken before the attack (/srv/.backup in the sim).
+            "restore_from_backup" => $"b=/srv/.backup/$(basename {p["dir"]}); test -d $b || {{ echo \"no backup at $b\"; exit 1; }}; " +
+                                     $"rm -rf {p["dir"]} && cp -a $b {p["dir"]} && echo 'restored {p["dir"]} from backup:' && ls -la {p["dir"]}",
             "hash_files" => $"find {p["dir"]} -maxdepth 3 -type f -exec sha256sum {{}} + | head -n 500",
             "kill_process" => $"kill -9 {int.Parse(p["pid"])}",
             "lock_account" => $"usermod -L {p["username"]} && (pkill -KILL -u {p["username"]} || true)",
@@ -49,6 +64,9 @@ public static class Templates
     public static byte Severity(string line)
     {
         var l = line.ToLowerInvariant();
+        // The implant's routine beacons arrive every 10 s: visible as events, but they shouldn't wake the agent each time.
+        if (l.Contains("beacon ok")) return 2;
+        if (l.Contains("beacon failed")) return 1;
         if (l.Contains(".locked") || l.Contains("ransom") || l.Contains("ai assistant") || l.Contains("ignore previous")) return 4;
         if (l.Contains("accepted") || l.Contains("curl") || l.Contains("upload") || l.Contains("sudo")) return 3;
         if (l.Contains("failed password") || l.Contains("invalid user")) return 2;

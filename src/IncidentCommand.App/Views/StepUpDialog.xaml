@@ -8,11 +8,9 @@
         Foreground="{DynamicResource TextFillColorPrimaryBrush}">
   <StackPanel Margin="24">
     <TextBlock x:Name="WhatText" TextWrapping="Wrap" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
-    <TextBlock Style="{StaticResource Muted}" Text="This action changes the network. Enter your password and a fresh code to approve it." Margin="0,0,0,12" />
+    <TextBlock Style="{StaticResource Muted}" Text="This action changes the network. Enter your password to approve it." Margin="0,0,0,12" />
     <TextBlock Text="Password" />
     <PasswordBox x:Name="Password" Margin="0,4,0,12" />
-    <TextBlock Text="6-digit code" />
-    <TextBox x:Name="Code" Margin="0,4,0,12" MaxLength="6" />
     <TextBlock x:Name="ErrorText" Foreground="{StaticResource DangerBrush}" Visibility="Collapsed" Margin="0,0,0,12" />
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
       <ui:Button Content="Cancel" Margin="0,0,8,0" Click="Cancel_Click" IsCancel="True" />

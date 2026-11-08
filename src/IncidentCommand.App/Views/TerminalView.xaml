@@ -41,7 +41,11 @@
 
     <!-- AI-suggested commands: never executable from here -->
     <DockPanel Grid.Column="2">
-      <TextBlock DockPanel.Dock="Top" Text="Commands the AI suggests" Style="{StaticResource H1}" />
+      <DockPanel DockPanel.Dock="Top">
+        <ui:Button DockPanel.Dock="Right" Content="Clear all" VerticalAlignment="Center"
+                   Command="{Binding ClearSuggestionsCommand}" IsEnabled="{Binding CanAct}" />
+        <TextBlock Text="Commands the AI suggests" Style="{StaticResource H1}" />
+      </DockPanel>
       <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,0,0,12"
                  Text="Written by the AI from data the attacker may control. Copying one only fills in the terminal box; you still decide whether to run it." />
       <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -49,7 +53,11 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate>
               <Border Style="{StaticResource Card}" BorderBrush="{Binding BannerBrush}" BorderThickness="2">
-                <StackPanel>
+                <Grid>
+                <ui:Button Content="✕" ToolTip="Dismiss this suggestion" HorizontalAlignment="Right" VerticalAlignment="Top"
+                           Padding="8,2" Margin="0,-6,-6,0" Panel.ZIndex="1"
+                           Command="{Binding DataContext.DismissCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                <StackPanel Margin="0,0,40,0">
                   <Border Background="{Binding BannerBrush}" Padding="10,8" CornerRadius="4" Margin="0,0,0,8">
                     <TextBlock Text="{Binding Banner}" Foreground="White" FontWeight="Bold" FontSize="17" TextWrapping="Wrap" />
                   </Border>
@@ -60,6 +68,7 @@
                   <ui:Button Content="Copy to terminal (does not run)" HorizontalAlignment="Left"
                              Command="{Binding DataContext.CopyToTerminalCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
                 </StackPanel>
+                </Grid>
               </Border>
             </DataTemplate>
           </ItemsControl.ItemTemplate>

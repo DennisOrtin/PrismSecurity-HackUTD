@@ -37,9 +37,15 @@ public partial class TimelineVm : PageVm
         Refresh();
     }
 
+    // ---- Continue / Stop after several automatic rounds ----
+    [ObservableProperty] bool hasHeld;
+    [ObservableProperty] string heldText = "";
+    ulong _heldRequestId;
+
     public override void Refresh()
     {
         var id = IncidentId;
+        RefreshHeld(id);
         var currentPhase = Conn.Db.IncidentView.Iter().Where(i => i.Id == id).Select(i => i.Phase).FirstOrDefault();
         Entries.Clear();
         foreach (var e in Conn.Db.TimelineView.Iter().Where(e => e.IncidentId == id).OrderByDescending(e => e.Id))
@@ -92,6 +98,33 @@ public partial class TimelineVm : PageVm
 
     [RelayCommand] void Accept(EntryRow row) => Conn.Reducers.ReviewTimelineEntry(row.Id, true);
     [RelayCommand] void Reject(EntryRow row) => Conn.Reducers.ReviewTimelineEntry(row.Id, false);
+
+    void RefreshHeld(ulong id)
+    {
+        // Request ids start at 1, so 0 means "nothing waiting".
+        _heldRequestId = Conn.Db.RequestView.Iter()
+            .Where(r => r.IncidentId == id && r.Held && !r.Released && (r.Status == RequestStatus.Pending || r.Status == RequestStatus.Ready))
+            .OrderByDescending(r => r.Id).Select(r => r.Id).FirstOrDefault();
+        HasHeld = _heldRequestId != 0 && Session.CanAct;
+        bool ready = Conn.Db.RequestView.Iter().Any(r => r.Id == _heldRequestId && r.Status == RequestStatus.Ready);
+        HeldText = ready
+            ? "The agent has worked through several rounds on its own. Its next step is ready. Keep going?"
+            : "The agent has worked through several rounds on its own and is preparing its next step. Keep going?";
+    }
+
+    /// Continue: the prepared answer is applied at once (or as soon as it's ready).
+    [RelayCommand]
+    void ContinueAgent()
+    {
+        if (_heldRequestId != 0) Conn.Reducers.ReleaseHeld(_heldRequestId);
+    }
+
+    /// Stop: the prepared answer is thrown away unseen.
+    [RelayCommand]
+    void StopAgent()
+    {
+        if (_heldRequestId != 0) Conn.Reducers.DiscardHeld(_heldRequestId);
+    }
 
     [RelayCommand]
     void RequestSummary() =>

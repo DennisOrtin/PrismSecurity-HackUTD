@@ -24,9 +24,10 @@ public partial class StepUpDialog : Window
         var password = Password.Password;
         var contents = await Task.Run(() => Vault.Unlock(Session.Username, password));
         Password.Clear();
-        if (contents == null || !TotpHelper.Verify(contents.TotpSecret, Code.Text))
+        // The 6-digit code was checked at login and stays valid for this session; step-up only needs the password.
+        if (contents == null)
         {
-            ErrorText.Text = "Wrong password or code.";
+            ErrorText.Text = "Wrong password.";
             ErrorText.Visibility = Visibility.Visible;
             OkButton.IsEnabled = true;
             return;

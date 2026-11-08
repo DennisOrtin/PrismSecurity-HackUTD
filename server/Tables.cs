@@ -14,7 +14,8 @@ using SpacetimeDB;
 [SpacetimeDB.Type] public enum DataStatus { Unknown, Secure, Encrypted, Exfiltrated, EncryptedAndExfiltrated }
 [SpacetimeDB.Type] public enum DataClass { Credentials, PersonalData, Financial, IntellectualProperty, Operational }
 [SpacetimeDB.Type] public enum Risk { None, Caution, Danger }
-[SpacetimeDB.Type] public enum RequestStatus { Pending, Planned, Failed }
+// Ready = answer prepared in the background, waiting for the responder to say Continue (held requests only).
+[SpacetimeDB.Type] public enum RequestStatus { Pending, Planned, Failed, Ready, Discarded }
 [SpacetimeDB.Type] public enum TerminalStatus { Queued, Running, Done, Failed }
 [SpacetimeDB.Type] public enum IndicatorKind { IpAddress, Account, Host, Process, File, Hash, Domain, Url, Other }
 [SpacetimeDB.Type] public enum Confidence { Low, Medium, High }
@@ -114,6 +115,8 @@ public partial struct Incident
     public string AiSummary;                           // maintained by the parser agent
     public string Classification;                      // parser's best guess: e.g. "Ransomware with data exfiltration"
     public Timestamp AiUpdatedAt;
+    public string ClosingSummary;                      // post-incident report written when the incident is closed
+    public long ClosedAtMicros;                        // 0 = open
 }
 
 [SpacetimeDB.Table(Accessor = "TimelineEntry")]
@@ -181,6 +184,10 @@ public partial struct AgentRequest
     public RequestStatus Status;
     public string Model;                               // LM Studio model ID for this request only; "" = Config.AgentModel
     public byte Depth;                                 // 0 = asked by a human or an event; +1 per automatic follow-up
+    public string Purpose;                             // "" = normal; "closing_summary" = write the post-incident report
+    public bool Held;                                  // after several automatic rounds: prepare the answer, show it only on Continue
+    public bool Released;                              // the responder pressed Continue
+    public string HeldResult;                          // the prepared model reply (JSON), applied instantly on Continue
 }
 
 [SpacetimeDB.Table(Accessor = "Plan")]
@@ -250,6 +257,7 @@ public partial struct SuggestedCommand
     public string Text;                                // NEVER executable from here
     public string Rationale;
     public Timestamp CreatedAt;
+    public bool Dismissed;                             // cleared by the responder, or used in the terminal
 }
 
 [SpacetimeDB.Table(Accessor = "Message")]
@@ -307,6 +315,8 @@ public partial struct TerminalCommand
     /// so views read every row with Bucket.Filter(0). Never set it; the default is 0.
     [SpacetimeDB.Index.BTree] public byte Bucket;
     [SpacetimeDB.PrimaryKey, SpacetimeDB.AutoInc] public ulong Id;
+    [SpacetimeDB.Index.BTree] public ulong IncidentId;
+    public ulong SuggestionId;                         // the AI suggestion this came from (0 = typed by hand)
     public string Host;
     public string Command;
     public string IssuedBy;

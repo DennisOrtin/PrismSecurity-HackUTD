@@ -100,6 +100,7 @@ public static class Session
         var c = Conn;
         Conn = null;
         Username = "";
+        SelectedIncidentId = 0;
         if (c != null) Close(c);
         Locked?.Invoke();
     }
@@ -107,8 +108,28 @@ public static class Session
     public static void ReportError(string message) => Error?.Invoke(message);
 
     /// The open incident the screens work on: newest one that isn't Closed. 0 = none.
-    public static ulong CurrentIncidentId =>
-        Conn?.Db.IncidentView.Iter().Where(i => i.Phase != Phase.Closed).OrderByDescending(i => i.Id).Select(i => i.Id).FirstOrDefault() ?? 0;
+    public static ulong CurrentIncidentId
+    {
+        get
+        {
+            if (Conn == null) return 0;
+            // A past incident picked under "Previous incidents" stays on screen until "Back to current".
+            if (SelectedIncidentId != 0 && Conn.Db.IncidentView.Iter().Any(i => i.Id == SelectedIncidentId)) return SelectedIncidentId;
+            return Conn.Db.IncidentView.Iter().Where(i => i.Phase != Phase.Closed)
+                       .OrderByDescending(i => i.Id).Select(i => i.Id).FirstOrDefault();
+        }
+    }
+
+    /// 0 = follow the newest open incident (normal). Otherwise every screen shows this incident.
+    public static ulong SelectedIncidentId { get; private set; }
+
+    public static void ViewIncident(ulong incidentId)
+    {
+        SelectedIncidentId = incidentId;
+        _dirty = true;
+    }
+
+    public static void BackToCurrent() => ViewIncident(0);
 
     /// Reducer calls are fire-and-forget; failures come back here and show in the red banner.
     static void WireErrors(DbConnection c)
@@ -131,7 +152,11 @@ public static class Session
         r.OnReviewAsset += (ctx, _, _) => Check(ctx, "Reviewing scope");
         r.OnAddTimelineEntry += (ctx, _, _, _) => Check(ctx, "Adding to the timeline");
         r.OnReviewTimelineEntry += (ctx, _, _) => Check(ctx, "Reviewing the timeline entry");
-        r.OnRunTerminalCommand += (ctx, _, _) => Check(ctx, "Running the command");
+        r.OnRunTerminalCommand += (ctx, _, _, _) => Check(ctx, "Running the command");
+        r.OnDismissSuggestion += (ctx, _) => Check(ctx, "Dismissing the suggestion");
+        r.OnClearSuggestions += (ctx, _) => Check(ctx, "Clearing suggestions");
+        r.OnReleaseHeld += (ctx, _) => Check(ctx, "Continuing");
+        r.OnDiscardHeld += (ctx, _) => Check(ctx, "Stopping");
         r.OnCreateInvite += (ctx, _, _, _) => Check(ctx, "Creating the invite");
         r.OnDeactivateUser += (ctx, _) => Check(ctx, "Deactivating the user");
         r.OnSetSshHost += (ctx, _, _, _, _) => Check(ctx, "Saving the host");

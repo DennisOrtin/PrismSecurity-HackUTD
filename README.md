@@ -80,6 +80,22 @@ For the executor, `scripts\setup-keys.ps1` creates the break-glass SSH key; copy
 
 In the app, propose Follow logs (auth and app) on `web-01` and `file-01` first, so events stream in.
 
+## Proving containment and eradication to the judges
+
+The dashboard says what was done; `sim\status.ps1` proves it, by checking live inside each container.
+
+1. Sim laptop: `reset.ps1`, then start your attack. Its first step should be `& "$PSScriptRoot\stage-implant.ps1"`
+   (before anything is encrypted; it takes the backup). This plants an implant on file-01 and web-01 that beacons
+   to the c2 container every 10 seconds, a cron persistence file, and an attacker SSH key.
+2. Put `sim\status.ps1` on a second screen. Everything starts red.
+3. In the dashboard, follow the app logs: the implant's "beacon ok to <c2 ip>:8080" lines stream in.
+4. Contain: block the c2 IP (or isolate the host), kill the implant process, lock jdoe.
+   **REACH C2 -> BLOCKED, IMPLANT -> stopped, jdoe -> LOCKED**, and the logs switch to "beacon FAILED".
+   The agent can confirm with `check_egress` (prints BLOCKED).
+5. Eradicate: `quarantine_file` on `/usr/local/bin/kworker-update`, `/etc/cron.d/kworker-update` and
+   `/home/jdoe/.ssh/authorized_keys`. **PERSISTENCE and PLANTED KEY -> removed.**
+6. Recover: `restore_from_backup` on `/srv/hr`. **ENCRYPTED FILES -> 0.**
+
 ## Inspecting the database
 
 `db.bat` reads every table, including private ones, as the database owner via `spacetime sql`:

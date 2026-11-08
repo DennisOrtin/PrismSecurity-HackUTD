@@ -33,6 +33,16 @@ public sealed class AiSettings
     public string DefaultReviewerModel { get; set; } = "qwen3-4b-instruct-2507";
     public string DefaultParserModel { get; set; } = "qwen3-4b-instruct-2507";
 
+    /// The responder's own footprint on the hosts, so the agent doesn't mistake it for the attacker.
+    /// Connections from these addresses are the executor's SSH sessions (in the Docker sim: Docker's gateway).
+    public List<string> ManagementAddresses { get; set; } = new() { "172.18.0.1" };
+    /// Process lines containing any of these are the executor's own commands or the host's normal baseline.
+    public List<string> BaselineProcesses { get; set; } = new()
+    {
+        "tail -n 0 -F", "sshd: root@notty", "sshd: root", "sshd: [accepted]", "sshd: [net]", "sshd: /usr/sbin/sshd",
+        "ps -eo pid", "ss -tunp", "/entrypoint.sh", "sleep 45",
+    };
+
     /// Per-agent output cap (tokens). Small caps keep the demo fast.
     public int AgentMaxTokens { get; set; } = 900;
     public int ReviewerMaxTokens { get; set; } = 200;

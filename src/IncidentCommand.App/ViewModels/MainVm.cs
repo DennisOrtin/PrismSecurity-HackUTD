@@ -25,9 +25,14 @@ public partial class MainVm : PageVm
     public TerminalVm Terminal { get; } = new();
     public PostureVm Posture { get; } = new();
     public SettingsVm Settings { get; } = new();
+    public PreviousIncidentsVm PreviousIncidents { get; }
+
+    [ObservableProperty] int selectedTab;          // 0 = Overview
+    [ObservableProperty] bool viewingPast;         // a past incident was opened from "Previous incidents"
 
     public MainVm()
     {
+        PreviousIncidents = new PreviousIncidentsVm(() => SelectedTab = 0);
         Session.Error += msg => ErrorText = msg;
         UserLine = $"{Session.Username} ({Session.Role})";
         Refresh();
@@ -39,12 +44,15 @@ public partial class MainVm : PageVm
         if (id == 0)
         {
             IncidentLine = "No open incident";
+            ViewingPast = false;
             PhaseText = "";
             PhaseBrush = Neutral;
         }
         foreach (var i in Conn.Db.IncidentView.Iter().Where(i => i.Id == id))
         {
-            IncidentLine = $"Incident #{i.Id}: {i.Title}  ·  Severity {i.Severity}";
+            ViewingPast = Session.SelectedIncidentId != 0;
+            IncidentLine = $"Incident #{i.Id}: {i.Title}  ·  Severity {i.Severity}" +
+                           (ViewingPast ? (i.Phase == Phase.Closed ? "  ·  past incident (closed)" : "  ·  reopened past incident") : "");
             PhaseText = i.Phase.ToString().ToUpperInvariant();
             PhaseBrush = i.Phase switch
             {
@@ -72,10 +80,11 @@ public partial class MainVm : PageVm
 
     [RelayCommand] void DismissError() => ErrorText = "";
     [RelayCommand] void LockNow() => Session.Lock();
+    [RelayCommand] void BackToCurrent() => Session.BackToCurrent();
 
     public void DetachAll()
     {
-        Detach(); Overview.Detach(); Actions.Detach(); Timeline.Detach();
+        Detach(); Overview.Detach(); Actions.Detach(); Timeline.Detach(); PreviousIncidents.Detach();
         Terminal.Detach(); Posture.Detach(); Settings.Detach();
     }
 }

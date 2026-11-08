@@ -34,9 +34,23 @@ public sealed class AgentWorker
         };
     }
 
+    readonly HashSet<ulong> _appliedHeld = new();
+
     public void Poll(DbConnection conn)
     {
         FlagInjectionAttempts(conn);
+
+        // Continue was pressed and the answer was already prepared: apply it now. No model call, so it's instant.
+        foreach (var r in conn.Db.RequestView.Iter()
+                     .Where(r => r.Held && r.Released && r.Status == RequestStatus.Ready && !_appliedHeld.Contains(r.Id)).ToList())
+        {
+            _appliedHeld.Add(r.Id);
+            var (stored, storedLabel) = HeldReply.Read(r.HeldResult);
+            var knownHosts = conn.Db.SshHostView.Iter().Select(h => h.Name).ToHashSet();
+            ServiceRunner.Log($"Continue pressed: applying the prepared answer for request {r.Id}.");
+            Apply(conn, r.Id, r.IncidentId, stored, storedLabel, knownHosts);
+        }
+
         if (_busy) return;
 
         var pending = conn.Db.RequestView.Iter()
@@ -56,15 +70,35 @@ public sealed class AgentWorker
         // Model is read from the database on EVERY call, so the commander's choice applies immediately.
         var model = Choose(conn, request.Model);
         var label = $"{AiNames.Name(model)} · agent";
-        ServiceRunner.Log($"Request {requestId} with {AiNames.Name(model)}: {ask}");
+        var held = request.Held;
+        var purpose = request.Purpose ?? "";
+        ServiceRunner.Log($"Request {requestId}{(held ? " (held: prepared in the background)" : "")} with {AiNames.Name(model)}: {ask}");
 
         Task.Run(async () =>
         {
             try
             {
+                if (purpose == "closing_summary")
+                {
+                    var report = await _model.ChatAsync(model, Prompts.ClosingReportSystem, context,
+                        maxTokens: Math.Max(1200, Settings.Current.Ai.AgentMaxTokens));
+                    var text = string.IsNullOrWhiteSpace(report.Content) ? "(the model returned no report)" : report.Content!.Trim();
+                    _runner.Post(c => c.Reducers.SaveClosingSummary(requestId, text, label));
+                    return;
+                }
+
                 var reply = await _model.ChatAsync(model, Prompts.AgentSystem,
                     $"{context}\n\n## The responder asks\n{ask}", Tools(hosts), maxTokens: Settings.Current.Ai.AgentMaxTokens);
-                _runner.Post(c => Apply(c, requestId, incidentId, reply, label, hosts));
+                _runner.Post(c =>
+                {
+                    // Held: keep the answer hidden until the responder presses Continue (or apply now if they already did).
+                    bool released = c.Db.RequestView.Iter().Any(r => r.Id == requestId && r.Released);
+                    bool discarded = c.Db.RequestView.Iter().Any(r => r.Id == requestId && r.Status == RequestStatus.Discarded);
+                    if (discarded) return;
+                    if (held && !released) { c.Reducers.StoreHeldResult(requestId, HeldReply.Write(reply, label)); return; }
+                    if (held) _appliedHeld.Add(requestId);
+                    Apply(c, requestId, incidentId, reply, label, hosts);
+                });
             }
             catch (Exception ex)
             {
@@ -122,13 +156,31 @@ public sealed class AgentWorker
         foreach (var a in conn.Db.AssetView.Iter().Where(a => a.IncidentId == incidentId))
             sb.AppendLine($"- {a.Host}: {a.DataClass}, {a.ScopeLevel} scope, {a.Status}{(a.Accepted ? "" : " (proposed, not yet accepted)")}");
 
+        var mgmt = Settings.Current.Ai.ManagementAddresses.ToList();
+        foreach (var c in conn.Db.ConfigView.Iter()) if (!string.IsNullOrWhiteSpace(c.ResponderAddress)) mgmt.Add(c.ResponderAddress);
+        sb.AppendLine("\n## Your own footprint on the hosts (never treat as attacker activity)");
+        sb.AppendLine($"- SSH connections from {string.Join(", ", mgmt.Distinct())} are the executor's own management sessions.");
+        sb.AppendLine("- 'tail -n 0 -F' processes are YOUR log followers. Killing them stops the event stream.");
+        sb.AppendLine("- Your containment changes system files: lock_account edits /etc/shadow and /etc/gshadow (and their '-' backups), " +
+                      "block_ip/isolate_host change iptables. Changes you caused are not attacker activity.");
+        sb.AppendLine("- Lines marked [baseline] or [responder] in outputs below are yours or normal for these hosts.");
+
         sb.AppendLine("\n## Actions so far (newest last)");
         foreach (var a in conn.Db.ActionView.Iter().Where(a => a.IncidentId == incidentId).OrderBy(a => a.Id).TakeLast(20))
         {
             var p = string.Join(", ", a.Params.Select(x => $"{x.Key}={x.Value}"));
             sb.AppendLine($"- action {a.Id} [{a.Status}] {a.Kind} on {a.Host} ({p})");
             if (!string.IsNullOrEmpty(a.Output))
-                sb.AppendLine(Untrusted($"output of action {a.Id}", Clip(a.Output, 1500)));
+                sb.AppendLine(Untrusted($"output of action {a.Id}", Clip(Annotate(a.Kind, a.Output, mgmt), 1500)));
+        }
+
+        sb.AppendLine("\n## Human terminal (commands the responder ran by hand, newest last)");
+        var outputs = conn.Db.TerminalOutputView.Iter().ToList();
+        foreach (var t in conn.Db.TerminalCommandView.Iter().Where(t => t.IncidentId == incidentId).OrderBy(t => t.Id).TakeLast(6))
+        {
+            var text = string.Concat(outputs.Where(o => o.CommandId == t.Id).OrderBy(o => o.Id).Select(o => o.Chunk));
+            sb.AppendLine($"- {t.Host}$ {t.Command}  [{t.Status}, exit {t.ExitCode}]{(t.SuggestionId != 0 ? " (your suggestion)" : "")}");
+            if (text.Length > 0) sb.AppendLine(Untrusted($"terminal output on {t.Host}", Clip(text, 1200)));
         }
 
         sb.AppendLine("\n## Recent network events (newest last)");
@@ -140,6 +192,21 @@ public sealed class AgentWorker
             sb.AppendLine($"- {m.Author}: {Clip(m.Text, 300)}");
 
         return sb.ToString();
+    }
+
+    /// Marks lines that are the responder's own footprint, so a small model doesn't "contain" itself.
+    public static string Annotate(string kind, string output, List<string> mgmt)
+    {
+        if (kind is not ("list_processes" or "list_connections")) return output;
+        var baseline = Settings.Current.Ai.BaselineProcesses;
+        var lines = output.Split('\n').Select(line =>
+        {
+            if (kind == "list_connections" && mgmt.Any(m => line.Contains($" {m}:"))) return line + "   [responder management SSH]";
+            if (kind == "list_processes" && line.Contains("tail -n 0 -F")) return line + "   [responder: your log follower]";
+            if (kind == "list_processes" && baseline.Any(b => line.Contains(b))) return line + "   [baseline]";
+            return line;
+        });
+        return string.Join("\n", lines);
     }
 
     public static string Untrusted(string source, string text) =>
@@ -199,6 +266,7 @@ public sealed class AgentWorker
         ["capture_traffic"] = new[] { "seconds" }, ["hash_files"] = new[] { "dir" },
         ["kill_process"] = new[] { "pid" }, ["lock_account"] = new[] { "username" }, ["block_ip"] = new[] { "ip" },
         ["isolate_host"] = Array.Empty<string>(), ["shutdown_host"] = Array.Empty<string>(),
+        ["check_egress"] = new[] { "ip", "port" }, ["quarantine_file"] = new[] { "path" }, ["restore_from_backup"] = new[] { "dir" },
     };
 
     static string? Problem(string kind, string host, Dictionary<string, string> ps, HashSet<string> hosts)
@@ -217,6 +285,8 @@ public sealed class AgentWorker
                 "username" => Regex.IsMatch(v, "^[a-z_][a-z0-9_-]{0,31}$"),
                 "ip" => Regex.IsMatch(v, @"^(\d{1,3}\.){3}\d{1,3}$") && v.Split('.').All(o => int.Parse(o) <= 255),
                 "dir" => Regex.IsMatch(v, @"^/[A-Za-z0-9/_.-]{0,199}$") && !v.Contains(".."),
+                "path" => Regex.IsMatch(v, @"^/[A-Za-z0-9/_.-]{0,199}$") && !v.Contains("..") && !v.EndsWith("/"),
+                "port" => int.TryParse(v, out var n) && n is >= 1 and <= 65535,
                 _ => true,
             };
             if (!ok) return $"bad value for '{k}': {v}";
@@ -232,6 +302,7 @@ public sealed class AgentWorker
         var suggested = new List<string>();
         var skipped = new List<string>();
         var calls = reply.ToolCalls.Count > 0 ? reply.ToolCalls : ModelClient.ToolCallsFromContent(reply.Content, "submit_plan");
+        bool callsFromText = reply.ToolCalls.Count == 0 && calls.Count > 0;   // then Content IS the JSON: don't echo it
 
         foreach (var call in calls)
         {
@@ -288,7 +359,8 @@ public sealed class AgentWorker
 
         if (!handled)
         {
-            var text = string.Join("\n\n", new[] { reply.Content?.Trim(), terminalNote }.Where(t => !string.IsNullOrWhiteSpace(t)));
+            var spoken = callsFromText ? null : reply.Content?.Trim();
+            var text = string.Join("\n\n", new[] { spoken, terminalNote }.Where(t => !string.IsNullOrWhiteSpace(t)));
             if (!string.IsNullOrWhiteSpace(text)) conn.Reducers.AnswerRequest(requestId, text, label);
             else conn.Reducers.FailRequest(requestId, "The model returned nothing usable.");
         }

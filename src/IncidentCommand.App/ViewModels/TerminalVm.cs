@@ -32,7 +32,8 @@ public partial class TerminalVm : PageVm
 
         var outputs = Conn.Db.TerminalOutputView.Iter().ToList();
         Commands.Clear();
-        foreach (var c in Conn.Db.TerminalCommandView.Iter().OrderByDescending(c => c.Id).Take(20))
+        // Only this incident's commands: the log starts empty for a new incident.
+        foreach (var c in Conn.Db.TerminalCommandView.Iter().Where(c => c.IncidentId == IncidentId).OrderByDescending(c => c.Id).Take(20))
         {
             var text = string.Concat(outputs.Where(o => o.CommandId == c.Id).OrderBy(o => o.Id).Select(o => o.Chunk));
             var status = c.Status is TerminalStatus.Done or TerminalStatus.Failed ? $"{c.Status} (exit {c.ExitCode})" : c.Status.ToString();
@@ -41,7 +42,7 @@ public partial class TerminalVm : PageVm
 
         var reviews = Conn.Db.ReviewView.Iter().Where(r => r.TargetKind == "suggestion").ToList();
         Suggestions.Clear();
-        foreach (var s in Conn.Db.SuggestionView.Iter().Where(s => s.IncidentId == IncidentId).OrderByDescending(s => s.Id))
+        foreach (var s in Conn.Db.SuggestionView.Iter().Where(s => s.IncidentId == IncidentId && !s.Dismissed).OrderByDescending(s => s.Id))
         {
             var patterns = RiskPatterns.Check(s.Text);
             var mine = reviews.Where(r => r.TargetId == s.Id).ToList();
@@ -65,8 +66,18 @@ public partial class TerminalVm : PageVm
     void Run()
     {
         if (SelectedHost == null || string.IsNullOrWhiteSpace(CommandText)) return;
-        Conn.Reducers.RunTerminalCommand(SelectedHost, CommandText.Trim());
+        if (IncidentId == 0) { Session.ReportError("Open an incident first: terminal commands are recorded against it."); return; }
+        Conn.Reducers.RunTerminalCommand(IncidentId, SelectedHost, CommandText.Trim());
         CommandText = "";
+    }
+
+    [RelayCommand]
+    void Dismiss(SuggestionCard card) => Conn.Reducers.DismissSuggestion(card.Id);
+
+    [RelayCommand]
+    void ClearSuggestions()
+    {
+        if (IncidentId != 0) Conn.Reducers.ClearSuggestions(IncidentId);
     }
 
     [RelayCommand]
