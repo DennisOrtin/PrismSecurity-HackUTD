@@ -47,7 +47,7 @@
             <StackPanel Margin="0,0,12,8"><TextBlock Text="Name" /><TextBox Text="{Binding HostName}" Width="130" /></StackPanel>
             <StackPanel Margin="0,0,12,8"><TextBlock Text="Address" /><TextBox Text="{Binding HostAddress}" Width="150" /></StackPanel>
             <StackPanel Margin="0,0,12,8"><TextBlock Text="Port" /><TextBox Text="{Binding HostPort}" Width="70" /></StackPanel>
-            <StackPanel Margin="0,0,12,8"><TextBlock Text="SSH fingerprint (SHA256)" /><TextBox Text="{Binding HostFingerprint}" Width="360" /></StackPanel>
+            <StackPanel Margin="0,0,12,8"><TextBlock Text="SSH fingerprint (optional: blank = pinned on first connect)" /><TextBox Text="{Binding HostFingerprint}" Width="360" /></StackPanel>
           </WrapPanel>
           <ui:Button Content="Save host" Command="{Binding SaveHostCommand}" IsEnabled="{Binding IsCommander}" HorizontalAlignment="Left" />
         </StackPanel>

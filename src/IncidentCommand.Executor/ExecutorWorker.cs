@@ -127,22 +127,45 @@ public sealed class ExecutorWorker
 
     static string Norm(string fp) => fp.Replace("SHA256:", "").TrimEnd('=').Trim();
 
-    static SshClient Connect(HostInfo h)
+    SshClient Connect(HostInfo h)
     {
         var s = Settings.Current;
+        if (!File.Exists(s.SshPrivateKeyPath))
+            throw new InvalidOperationException(
+                $"No SSH key at {s.SshPrivateKeyPath}. On this laptop run scripts\\setup-keys.ps1, copy the public key it prints " +
+                "to the sim laptop as sim\\keys\\authorized_keys, then run sim\\reset.ps1 there.");
+
         var client = new SshClient(new ConnectionInfo(h.Address, h.Port, s.SshUser,
             new PrivateKeyAuthenticationMethod(s.SshUser, new PrivateKeyFile(s.SshPrivateKeyPath))));
+        string? firstSeen = null;
         client.HostKeyReceived += (_, e) =>
         {
+            if (string.IsNullOrWhiteSpace(h.Fingerprint))
+            {
+                // Trust on first use: accept it this once and pin it, so any later change is refused.
+                e.CanTrust = true;
+                firstSeen = e.FingerPrintSHA256;
+                return;
+            }
             e.CanTrust = Norm(e.FingerPrintSHA256) == Norm(h.Fingerprint);
             if (!e.CanTrust)
                 ServiceRunner.Log($"HOST KEY MISMATCH on {h.Name}: got {e.FingerPrintSHA256}, pinned {h.Fingerprint}. Possible impersonation. Refusing.");
         };
-        client.Connect();
+        try { client.Connect(); }
+        catch (Renci.SshNet.Common.SshConnectionException) when (!string.IsNullOrWhiteSpace(h.Fingerprint))
+        {
+            throw new InvalidOperationException($"{h.Name}'s host key doesn't match the pinned fingerprint. Possible impersonation; refusing to connect.");
+        }
+        if (firstSeen != null)
+        {
+            var fp = firstSeen;
+            ServiceRunner.Log($"Pinned {h.Name}'s host key on first use: SHA256:{Norm(fp)}");
+            _runner.Post(c => c.Reducers.PinHostKey(h.Name, "SHA256:" + Norm(fp)));
+        }
         return client;
     }
 
-    static (bool Ok, string Output) Exec(HostInfo h, string command, TimeSpan timeout)
+    (bool Ok, string Output) Exec(HostInfo h, string command, TimeSpan timeout)
     {
         try
         {

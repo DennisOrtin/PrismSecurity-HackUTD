@@ -143,6 +143,19 @@ public static partial class Module
         WriteAudit(ctx, u.Username, "set_ssh_host", Payload("name", name, "address", address, "port", port, "fingerprint", pinnedFingerprint));
     }
 
+    /// Trust on first use: if the commander registered a host without a fingerprint, the executor pins the
+    /// key it sees on its first connection. Only ever fills an EMPTY fingerprint; a mismatch later is refused.
+    [SpacetimeDB.Reducer]
+    public static void PinHostKey(ReducerContext ctx, string name, string fingerprint)
+    {
+        var u = Require(ctx, Role.Executor);
+        var h = ctx.Db.SshHost.Name.Find(name) ?? throw new Exception($"Unknown host '{name}'.");
+        if (!string.IsNullOrWhiteSpace(h.PinnedFingerprint)) throw new Exception($"{name} already has a pinned host key.");
+        if (fingerprint.Length is < 20 or > 120) throw new Exception("That doesn't look like an SSH fingerprint.");
+        ctx.Db.SshHost.Name.Update(h with { PinnedFingerprint = fingerprint });
+        WriteAudit(ctx, u.Username, "pin_host_key", Payload("name", name, "fingerprint", fingerprint));
+    }
+
     [SpacetimeDB.Reducer]
     public static void SetResponderAddress(ReducerContext ctx, string address)
     {
@@ -502,7 +515,9 @@ public static partial class Module
         if (a.Tier == Tier.Destructive && u.Role != Role.Commander) throw new Exception("Destructive actions need the incident commander.");
         if (Validate(ctx, a.Kind, a.Host, a.Params) != a.Tier) throw new Exception("Action no longer passes validation.");
 
-        if (a.PlanId != 0)
+        // Order only matters for steps that CHANGE something: read-only steps can be approved (and run)
+        // together, but a containment or destructive step waits until every earlier step has finished.
+        if (a.PlanId != 0 && a.Tier != Tier.ReadOnly)
         {
             bool blocked = ctx.Db.ResponseAction.PlanId.Filter(a.PlanId).Any(o =>
                 o.StepOrder < a.StepOrder &&

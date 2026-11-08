@@ -39,7 +39,8 @@ public partial class ActionsVm : PageVm
         foreach (var a in actions.Where(a => a.Status == ActionStatus.Proposed).OrderBy(a => a.PlanId).ThenBy(a => a.StepOrder))
         {
             var siblings = actions.Where(o => o.PlanId == a.PlanId && a.PlanId != 0).ToList();
-            bool ready = a.PlanId == 0 || !siblings.Any(o => o.StepOrder < a.StepOrder &&
+            // Mirrors the module: read-only steps never wait; changes wait for every earlier step.
+            bool ready = a.PlanId == 0 || a.Tier == Tier.ReadOnly || !siblings.Any(o => o.StepOrder < a.StepOrder &&
                          o.Status is ActionStatus.Proposed or ActionStatus.Approved or ActionStatus.Running);
             var worst = reviews.Where(r => r.TargetId == a.Id).OrderByDescending(r => r.Risk).FirstOrDefault();
             bool hasReview = reviews.Any(r => r.TargetId == a.Id);

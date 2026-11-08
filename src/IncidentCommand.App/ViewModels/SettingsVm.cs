@@ -61,7 +61,8 @@ public partial class SettingsVm : PageVm
             Users.Add(new UserRow(u.Username, u.DisplayName, u.Role.ToString(), u.Active ? "Active" : "Deactivated"));
         Hosts.Clear();
         foreach (var h in Conn.Db.SshHostView.Iter().OrderBy(h => h.Name))
-            Hosts.Add(new HostRow(h.Name, h.Address, h.Port, h.PinnedFingerprint));
+            Hosts.Add(new HostRow(h.Name, h.Address, h.Port,
+                string.IsNullOrWhiteSpace(h.PinnedFingerprint) ? "(not pinned yet: pinned on first connect)" : h.PinnedFingerprint));
         foreach (var c in Conn.Db.ConfigView.Iter())
         {
             _loadingServices = true;
