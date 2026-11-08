@@ -160,11 +160,17 @@ public partial class SettingsVm : PageVm
     [RelayCommand]
     async Task ReplaceServiceIdentities()
     {
-        var ok = System.Windows.MessageBox.Show(
-            "This gives the agent, reviewer, parser and executor brand-new identities and revokes the old ones. " +
-            "Use it if a service token may have been copied. Continue?",
-            "Replace service identities?", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
-        if (ok == System.Windows.MessageBoxResult.Yes) await ServiceProvisioner.EnsureAllAsync(force: true);
+        var dialog = new Wpf.Ui.Controls.MessageBox
+        {
+            Title = "Replace service identities?",
+            Content = "This gives the agent, reviewer, parser and executor brand-new identities and revokes the old ones. " +
+                      "Use it if a service token may have been copied. Continue?",
+            PrimaryButtonText = "Replace",
+            SecondaryButtonText = "Cancel",
+            PrimaryButtonAppearance = Wpf.Ui.Controls.ControlAppearance.Danger
+        };
+        if (await dialog.ShowDialogAsync(true, CancellationToken.None) == Wpf.Ui.Controls.MessageBoxResult.Primary)
+            await ServiceProvisioner.EnsureAllAsync(force: true);
         Refresh();
     }
 

@@ -19,7 +19,10 @@
       <Color x:Key="TextColor">#E6EBF5</Color>
       <Color x:Key="SubTextColor">#8C97AD</Color>
       <Color x:Key="AccentColor">#4F8CFF</Color>
-      <Color x:Key="TerminalColor">#070A10</Color>
+      <Color x:Key="TerminalColor">#151C2A</Color>
+      <Color x:Key="ButtonHoverColor">#151C2A</Color>
+      <Color x:Key="PrimaryButtonHoverColor">#3F75DE</Color>
+      <Color x:Key="DangerButtonHoverColor">#D84444</Color>
 
       <SolidColorBrush x:Key="BgBrush" Color="{StaticResource BgColor}" />
       <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
@@ -30,7 +33,18 @@
       <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
       <SolidColorBrush x:Key="AccentSoftBrush" Color="#264F8CFF" />
       <SolidColorBrush x:Key="TerminalBrush" Color="{StaticResource TerminalColor}" />
-      <SolidColorBrush x:Key="TerminalOutputBrush" Color="#0E131C" />
+      <SolidColorBrush x:Key="TerminalOutputBrush" Color="#8C97AD" />
+      <SolidColorBrush x:Key="ButtonHoverBrush" Color="{StaticResource ButtonHoverColor}" />
+      <SolidColorBrush x:Key="PrimaryButtonHoverBrush" Color="{StaticResource PrimaryButtonHoverColor}" />
+      <SolidColorBrush x:Key="DangerButtonHoverBrush" Color="{StaticResource DangerButtonHoverColor}" />
+
+      <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="{StaticResource SurfaceColor}" />
+      <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="{StaticResource TextColor}" />
+      <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="{StaticResource Surface2Color}" />
+      <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="{StaticResource TextColor}" />
+      <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="{StaticResource AccentColor}" />
+      <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="{StaticResource TextColor}" />
+      <SolidColorBrush x:Key="{x:Static SystemColors.GrayTextBrushKey}" Color="{StaticResource SubTextColor}" />
 
       <!-- Status colours. Always paired with a word on screen, never colour alone. -->
       <SolidColorBrush x:Key="DangerBrush"  Color="#F05252" />
@@ -43,6 +57,112 @@
       <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
       <BooleanToVisibilityConverter x:Key="BoolVis" />
       <local:InvertBoolVis x:Key="InvertBoolVis" />
+
+      <!-- Keep native WPF controls on the same dark palette as WPF-UI. -->
+      <Style TargetType="{x:Type TextBlock}">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      </Style>
+      <Style TargetType="{x:Type TextBox}">
+        <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        <Setter Property="CaretBrush" Value="{StaticResource TextBrush}" />
+        <Setter Property="SelectionBrush" Value="{StaticResource AccentBrush}" />
+        <Setter Property="SelectionTextBrush" Value="{StaticResource TextBrush}" />
+      </Style>
+      <Style TargetType="{x:Type PasswordBox}">
+        <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        <Setter Property="CaretBrush" Value="{StaticResource TextBrush}" />
+      </Style>
+      <Style TargetType="{x:Type ComboBox}">
+        <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+      </Style>
+      <Style TargetType="{x:Type ComboBoxItem}">
+        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Style.Triggers>
+          <Trigger Property="IsMouseOver" Value="True">
+            <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
+          </Trigger>
+          <Trigger Property="IsSelected" Value="True">
+            <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+          </Trigger>
+        </Style.Triggers>
+      </Style>
+      <Style TargetType="{x:Type CheckBox}">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      </Style>
+      <Style TargetType="{x:Type ListBox}">
+        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+      </Style>
+      <Style TargetType="{x:Type ListBoxItem}">
+        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Style.Triggers>
+          <Trigger Property="IsMouseOver" Value="True">
+            <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
+          </Trigger>
+          <Trigger Property="IsSelected" Value="True">
+            <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+          </Trigger>
+        </Style.Triggers>
+      </Style>
+
+      <Style TargetType="{x:Type Button}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Style.Triggers>
+          <Trigger Property="IsMouseOver" Value="True">
+            <Setter Property="Background" Value="{StaticResource ButtonHoverBrush}" />
+          </Trigger>
+          <Trigger Property="IsPressed" Value="True">
+            <Setter Property="Background" Value="{StaticResource ButtonHoverBrush}" />
+          </Trigger>
+        </Style.Triggers>
+      </Style>
+      <Style TargetType="{x:Type ui:Button}" BasedOn="{StaticResource {x:Type ui:Button}}">
+        <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        <Setter Property="MouseOverBackground" Value="{StaticResource ButtonHoverBrush}" />
+        <Setter Property="PressedBackground" Value="{StaticResource ButtonHoverBrush}" />
+        <Setter Property="MouseOverBorderBrush" Value="{StaticResource ButtonHoverBrush}" />
+        <Setter Property="PressedBorderBrush" Value="{StaticResource ButtonHoverBrush}" />
+        <Style.Triggers>
+          <Trigger Property="Appearance" Value="Primary">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="MouseOverBackground" Value="{StaticResource PrimaryButtonHoverBrush}" />
+            <Setter Property="PressedBackground" Value="{StaticResource PrimaryButtonHoverBrush}" />
+            <Setter Property="MouseOverBorderBrush" Value="{StaticResource PrimaryButtonHoverBrush}" />
+            <Setter Property="PressedBorderBrush" Value="{StaticResource PrimaryButtonHoverBrush}" />
+          </Trigger>
+          <Trigger Property="Appearance" Value="Danger">
+            <Setter Property="Background" Value="{StaticResource DangerBrush}" />
+            <Setter Property="MouseOverBackground" Value="{StaticResource DangerButtonHoverBrush}" />
+            <Setter Property="PressedBackground" Value="{StaticResource DangerButtonHoverBrush}" />
+            <Setter Property="MouseOverBorderBrush" Value="{StaticResource DangerButtonHoverBrush}" />
+            <Setter Property="PressedBorderBrush" Value="{StaticResource DangerButtonHoverBrush}" />
+          </Trigger>
+          <Trigger Property="IsEnabled" Value="False">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource SubTextBrush}" />
+            <Setter Property="MouseOverBackground" Value="{StaticResource SurfaceBrush}" />
+            <Setter Property="PressedBackground" Value="{StaticResource SurfaceBrush}" />
+            <Setter Property="MouseOverBorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="PressedBorderBrush" Value="{StaticResource LineBrush}" />
+          </Trigger>
+        </Style.Triggers>
+      </Style>
 
       <!-- ============ Text ============ -->
       <Style x:Key="H1" TargetType="TextBlock">
@@ -89,7 +209,7 @@
         <Setter Property="Margin" Value="0,0,12,12" />
         <Setter Property="MinWidth" Value="150" />
       </Style>
-      <!-- Rounded status pill: Background = colour, text inside is white/bold -->
+      <!-- Rounded status pill: Background = colour, text inside is light/bold -->
       <Style x:Key="Chip" TargetType="Border">
         <Setter Property="CornerRadius" Value="999" />
         <Setter Property="Padding" Value="10,3" />
@@ -146,7 +266,8 @@
 
       <!-- Grids look like the rest of the app -->
       <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
-        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
         <Setter Property="RowBackground" Value="{StaticResource SurfaceBrush}" />
         <Setter Property="AlternatingRowBackground" Value="{StaticResource Surface2Brush}" />
         <Setter Property="GridLinesVisibility" Value="None" />
@@ -155,6 +276,22 @@
         <Setter Property="HeadersVisibility" Value="Column" />
         <Setter Property="CanUserResizeRows" Value="False" />
         <Setter Property="RowHeight" Value="34" />
+      </Style>
+      <Style TargetType="{x:Type DataGridColumnHeader}">
+        <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+      </Style>
+      <Style TargetType="{x:Type DataGridCell}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Style.Triggers>
+          <Trigger Property="IsSelected" Value="True">
+            <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+          </Trigger>
+        </Style.Triggers>
       </Style>
     </ResourceDictionary>
   </Application.Resources>

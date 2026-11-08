@@ -7,7 +7,7 @@
       <!-- Header strip (drag the line just above it to resize) -->
       <Border DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Height="38" Padding="14,0">
         <DockPanel>
-          <Button x:Name="CollapseButton" DockPanel.Dock="Right" Click="Collapse_Click" Background="Transparent" BorderThickness="0"
+          <Button x:Name="CollapseButton" DockPanel.Dock="Right" Click="Collapse_Click"
                   Cursor="Hand" ToolTip="Minimise or restore the terminal" Padding="8,4" VerticalAlignment="Center">
             <TextBlock x:Name="CollapseGlyph" Text="&#xE70D;" FontFamily="{StaticResource IconFont}" Foreground="{StaticResource SubTextBrush}" />
           </Button>

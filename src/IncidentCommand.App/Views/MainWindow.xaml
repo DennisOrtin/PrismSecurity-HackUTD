@@ -19,7 +19,7 @@
       <DockPanel>
         <!-- Expand / collapse -->
         <Button DockPanel.Dock="Top" Command="{Binding ToggleSidebarCommand}" Cursor="Hand" Margin="6,10,6,8"
-                ToolTip="Show or hide the labels" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Left" Padding="10,8">
+                ToolTip="Show or hide the labels" HorizontalContentAlignment="Left" Padding="10,8">
           <StackPanel Orientation="Horizontal">
             <TextBlock Text="&#xE700;" FontFamily="{StaticResource IconFont}" FontSize="18" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" />
             <TextBlock Text="Incident Command" Margin="14,0,0,0" FontWeight="SemiBold" VerticalAlignment="Center"

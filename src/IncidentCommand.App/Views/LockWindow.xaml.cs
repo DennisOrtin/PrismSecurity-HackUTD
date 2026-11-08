@@ -144,7 +144,14 @@ public partial class LockWindow : Window
 
             var password = EnrollPassword.Password;
             await Task.Run(() => Vault.Save(new VaultContents(username, token, _pendingSecret), password));
-            MessageBox.Show($"Enrolled. Your username is {username}. Write it down: the lock screen won't list it.", "Enrolled");
+            var dialog = new Wpf.Ui.Controls.MessageBox
+            {
+                Title = "Enrolled",
+                Content = $"Enrolled. Your username is {username}. Write it down: the lock screen won't list it.",
+                PrimaryButtonText = "OK",
+                Owner = this
+            };
+            await dialog.ShowDialogAsync(true, CancellationToken.None);
             UserBox.Text = username;
             ShowLogin_Click(sender, e);
         }

@@ -67,7 +67,7 @@
                   <Grid>
                     <Button Content="&#xE711;" FontFamily="{StaticResource IconFont}" FontSize="11" ToolTip="Dismiss this suggestion"
                             HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-4,-4,0" Padding="6,4" Panel.ZIndex="1"
-                            Background="Transparent" BorderThickness="0" Foreground="{StaticResource SubTextBrush}" Cursor="Hand"
+                            Foreground="{StaticResource SubTextBrush}" Cursor="Hand"
                             Command="{Binding DataContext.DismissCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
                     <StackPanel Margin="0,0,24,0">
                       <TextBlock Text="SUGGESTED COMMAND" Style="{StaticResource Label}" />
