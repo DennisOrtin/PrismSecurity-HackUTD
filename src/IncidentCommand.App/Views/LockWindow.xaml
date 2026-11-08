@@ -1,0 +1,62 @@
+<Window x:Class="IncidentCommand.App.Views.LockWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="Incident Command - Locked" Width="560" Height="760"
+        WindowStartupLocation="CenterScreen" FontSize="15"
+        Background="{DynamicResource ApplicationBackgroundBrush}"
+        Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="32">
+      <TextBlock Text="Incident Command" Style="{StaticResource H1}" />
+      <TextBlock x:Name="ErrorText" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" Margin="0,0,0,12" Visibility="Collapsed" />
+
+      <!-- Log in -->
+      <StackPanel x:Name="LoginPanel">
+        <TextBlock Text="Account" />
+        <ComboBox x:Name="UserBox" Margin="0,4,0,12" />
+        <TextBlock Text="Password" />
+        <PasswordBox x:Name="LoginPassword" Margin="0,4,0,12" />
+        <TextBlock Text="6-digit code from your phone" />
+        <TextBox x:Name="LoginCode" Margin="0,4,0,16" MaxLength="6" />
+        <ui:Button x:Name="LoginButton" Content="Unlock" Appearance="Primary" HorizontalAlignment="Stretch" Click="Login_Click" IsDefault="True" />
+        <ui:Button Content="I have an invite code" Margin="0,12,0,0" HorizontalAlignment="Stretch" Click="ShowEnroll_Click" />
+      </StackPanel>
+
+      <!-- First run: create the incident commander -->
+      <StackPanel x:Name="SetupPanel" Visibility="Collapsed">
+        <TextBlock Text="First run: set up the incident commander" Style="{StaticResource H2}" />
+        <TextBlock Style="{StaticResource Muted}" Text="This laptop has no accounts yet. The first account becomes incident commander and can enroll everyone else, in person." Margin="0,0,0,12" />
+        <TextBlock Text="Your name" />
+        <TextBox x:Name="SetupName" Margin="0,4,0,12" />
+        <TextBlock Text="Password (12+ characters)" />
+        <PasswordBox x:Name="SetupPassword" Margin="0,4,0,12" />
+        <TextBlock Text="Password again" />
+        <PasswordBox x:Name="SetupPassword2" Margin="0,4,0,12" />
+        <TextBlock Text="Scan this with an authenticator app on your phone" />
+        <Image x:Name="SetupQr" Width="220" Height="220" Margin="0,8,0,8" HorizontalAlignment="Left" />
+        <TextBlock Text="Then type the 6-digit code it shows" />
+        <TextBox x:Name="SetupCode" Margin="0,4,0,16" MaxLength="6" />
+        <ui:Button x:Name="SetupButton" Content="Create commander account" Appearance="Primary" HorizontalAlignment="Stretch" Click="Setup_Click" />
+      </StackPanel>
+
+      <!-- Enroll with an invite code from the commander -->
+      <StackPanel x:Name="EnrollPanel" Visibility="Collapsed">
+        <TextBlock Text="Enroll with an invite code" Style="{StaticResource H2}" />
+        <TextBlock Style="{StaticResource Muted}" Text="The incident commander gives you a one-time code in person. It expires after 15 minutes." Margin="0,0,0,12" />
+        <TextBlock Text="Invite code" />
+        <TextBox x:Name="EnrollCode" Margin="0,4,0,12" CharacterCasing="Upper" />
+        <TextBlock Text="Choose a password (12+ characters)" />
+        <PasswordBox x:Name="EnrollPassword" Margin="0,4,0,12" />
+        <TextBlock Text="Password again" />
+        <PasswordBox x:Name="EnrollPassword2" Margin="0,4,0,12" />
+        <TextBlock Text="Scan this with an authenticator app on your phone" />
+        <Image x:Name="EnrollQr" Width="220" Height="220" Margin="0,8,0,8" HorizontalAlignment="Left" />
+        <TextBlock Text="Then type the 6-digit code it shows" />
+        <TextBox x:Name="EnrollTotp" Margin="0,4,0,16" MaxLength="6" />
+        <ui:Button x:Name="EnrollButton" Content="Enroll" Appearance="Primary" HorizontalAlignment="Stretch" Click="Enroll_Click" />
+        <ui:Button Content="Back to log in" Margin="0,12,0,0" HorizontalAlignment="Stretch" Click="ShowLogin_Click" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</Window>

@@ -1,0 +1,37 @@
+# The "compromised corporate network". Run on the sim laptop (Docker Desktop, WSL2 backend).
+# SSH ports are published on all interfaces so the responder laptop can reach them over the tailnet.
+x-host: &host
+  build: ./host
+  cap_add: [NET_ADMIN, NET_RAW]
+  restart: unless-stopped
+
+services:
+  web-01:
+    <<: *host
+    hostname: web-01
+    container_name: web-01
+    ports: ["2201:22"]
+    volumes: ["./keys:/keys:ro", "web01-keys:/etc/ssh/keys"]
+  file-01:
+    <<: *host
+    hostname: file-01
+    container_name: file-01
+    ports: ["2202:22"]
+    volumes: ["./keys:/keys:ro", "file01-keys:/etc/ssh/keys"]
+  db-01:
+    <<: *host
+    hostname: db-01
+    container_name: db-01
+    ports: ["2203:22"]
+    volumes: ["./keys:/keys:ro", "db01-keys:/etc/ssh/keys"]
+  c2:
+    # The attacker's server. Not published: only the other containers can reach it.
+    build: ./host
+    hostname: c2
+    container_name: c2
+    entrypoint: ["bash", "-c", "while true; do nc -l 8080 > /dev/null; done"]
+
+volumes:
+  web01-keys: {}
+  file01-keys: {}
+  db01-keys: {}

@@ -1,0 +1,38 @@
+<UserControl x:Class="IncidentCommand.App.Views.PostureView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="24">
+      <TextBlock Text="Can this laptop be trusted on a hostile network?" Style="{StaticResource H1}" />
+      <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,8"
+                 Text="Each fix asks Windows for permission and can be undone. R = takes effect after a restart. N = cuts network connectivity. M = must be done by hand." />
+      <DockPanel Margin="0,0,0,16">
+        <ui:Button DockPanel.Dock="Left" Content="Check now" Appearance="Primary" Command="{Binding CheckNowCommand}" Margin="0,0,12,0" />
+        <TextBlock Text="{Binding Status}" VerticalAlignment="Center" />
+      </DockPanel>
+      <ItemsControl ItemsSource="{Binding Checks}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Style="{StaticResource Card}">
+              <DockPanel>
+                <TextBlock DockPanel.Dock="Left" Text="{Binding State}" Foreground="{Binding StateBrush}" FontWeight="Bold" Width="64" VerticalAlignment="Center" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Markers}" FontWeight="Bold" Foreground="{StaticResource WarningBrush}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                  <ui:Button Content="Fix" Margin="0,0,8,0" IsEnabled="{Binding CanFix}"
+                             Command="{Binding DataContext.FixCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                  <ui:Button Content="Undo" IsEnabled="{Binding CanUndo}"
+                             Command="{Binding DataContext.UndoCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                </StackPanel>
+                <StackPanel>
+                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding Detail}" Style="{StaticResource Muted}" />
+                </StackPanel>
+              </DockPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- One executable, two roles:  Agent.exe agent  |  Agent.exe reviewer  |  Agent.exe enroll <agent|reviewer> <code> -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Agent</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\IncidentCommand.Client\IncidentCommand.Client.csproj" />
+  </ItemGroup>
+</Project>
